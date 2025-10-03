@@ -2,6 +2,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { registerSW } from 'virtual:pwa-register';
 import { ensureAnonymousId } from "../lib/anonymous";
 import Shell from "./ui/Shell";
 import Yoga from "./pages/Yoga";
@@ -14,6 +15,8 @@ import Commerce from "./pages/Commerce";
 import AuthPage from "./pages/Auth";
 
 ensureAnonymousId();
+
+registerSW({ immediate: true });
 
 const router = createBrowserRouter([
   { path: "/", element: <Shell />, children: [
