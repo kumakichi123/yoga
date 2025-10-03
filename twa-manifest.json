@@ -1,0 +1,55 @@
+{
+  "packageId": "app.vercel.yoga_snowy.twa",
+  "host": "yoga-snowy.vercel.app",
+  "name": "3分AIヨガ：AI搭載の簡単ヨガアプリ",
+  "launcherName": "3分AIヨガ",
+  "display": "standalone",
+  "themeColor": "#A855F7",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#F6F1FF",
+  "enableNotifications": true,
+  "startUrl": "yoga-snowy.vercel.app",
+  "iconUrl": "https://yoga-snowy.vercel.app/img/icon-512.png",
+  "maskableIconUrl": "https://yoga-snowy.vercel.app/img/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "C:\\Users\\asabe\\yoga-release-key.jks",
+    "alias": "yoga-key"
+  },
+  "appVersionName": "3",
+  "appVersionCode": 3,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://yoga-snowy.vercel.app/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "playBilling": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://yoga-snowy.vercel.app/",
+  "minSdkVersion": 21,
+  "orientation": "default",
+  "fingerprints": [
+    {
+      "value": "22:A2:68:7C:02:37:3B:85:EE:72:DF:FE:C2:5D:22:42:69:31:A4:EE:D0:E9:81:6D:1A:CB:7B:4F:29:44:A1:1A"
+    }
+  ],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [],
+  "appVersion": "3"
+}

@@ -1,4 +1,14 @@
 node_modules/
 dist/
+dev-dist/
 .env
-
+yoga-release-key.jks
+*.keystore
+*.aab
+*.apk
+app/build/
+.gradle/
+gradle/
+app/release/
+app-release-signed.apk
+app-release-bundle.aab
