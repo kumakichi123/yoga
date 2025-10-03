@@ -5,7 +5,7 @@ import OnboardingWizard from "./OnboardingWizard";
 import { useAuth, signOut } from "../hooks/useAuth";
 
 const TEXT = {
-  title: "5\u5206\u3067\u30E8\u30AC",
+  title: "\u4e09\u5206\u30e8\u30ac",
   login: "\u30ED\u30B0\u30A4\u30F3 / \u65B0\u898F\u767B\u9332",
   logout: "\u30ED\u30B0\u30A2\u30A6\u30C8",
   authLoading: "\u8A8D\u8A3C\u3092\u78BA\u8A8D\u4E2D...",
@@ -43,7 +43,6 @@ export default function Shell() {
     <div className="container row" style={{ paddingBottom: 80 }}>
       <OnboardingWizard />
       <header className="shell-header">
-        <h1 className="h">{TEXT.title}</h1>
         <div className="shell-auth">
           {loading ? (
             <span className="muted">{TEXT.authLoading}</span>

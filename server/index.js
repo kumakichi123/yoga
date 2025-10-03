@@ -1,19 +1,32 @@
-// server/index.js
+ï»¿// server/index.js
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
+import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+const rawBodySaver = (req, res, buf) => { if (req.originalUrl === '/api/stripe/webhook') { req.rawBody = buf; } };
+app.use(express.json({ verify: rawBodySaver }));
 
 // ---- Supabase (server-side) ----
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
+
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || '';
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+const APP_BASE_URL =
+  process.env.APP_BASE_URL ||
+  process.env.APP_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173');
+const stripeClient = STRIPE_SECRET_KEY
+  ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' })
+  : null;
 
 async function getUserFromRequest(req) {
   const auth = req.headers['authorization'];
@@ -32,6 +45,47 @@ function getAnonymousId(req) {
                 (typeof bodyAnon === 'string' && bodyAnon.trim().length) ? bodyAnon.trim() : null;
   return value;
 }
+function mapStripeStatus(status) {
+  if (!status) return 'free';
+  if (status === 'active' || status === 'trialing') return status;
+  if (status === 'past_due') return 'past_due';
+  return 'free';
+}
+
+async function syncStripeSubscription(subscription) {
+  if (!subscription) return;
+  const userId = subscription.metadata?.user_id;
+  if (!userId) {
+    console.warn('Stripe subscription missing user_id metadata');
+    return;
+  }
+  const normalizedStatus = mapStripeStatus(subscription.status);
+  const periodEndIso =
+    subscription.current_period_end && normalizedStatus !== 'free'
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : null;
+  const payload = {
+    user_id: userId,
+    subscription_status: normalizedStatus,
+    subscription_current_period_end: periodEndIso,
+    subscription_provider: normalizedStatus === 'free' ? null : 'stripe',
+    stripe_customer_id: typeof subscription.customer === 'string' ? subscription.customer : null,
+    stripe_subscription_id: normalizedStatus === 'free' ? null : subscription.id,
+  };
+  const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'user_id' });
+  if (error) {
+    console.error('Supabase subscription sync error', error);
+  }
+}
+
+function ensureStripeConfigured(res) {
+  if (!stripeClient || !STRIPE_PRICE_ID) {
+    res.status(500).json({ error: 'stripe_not_configured' });
+    return false;
+  }
+  return true;
+}
+
 
 app.post('/api/sessions', async (req, res) => {
   try {
@@ -149,6 +203,84 @@ app.post('/api/sessions/link', async (req, res) => {
   }
 });
 
+app.post('/api/subscription/checkout', async (req, res) => {
+  try {
+    if (!ensureStripeConfigured(res)) return;
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      return res.status(401).json({ error: 'auth_required' });
+    }
+    const successUrl = `${APP_BASE_URL}/settings?upgrade=success`;
+    const cancelUrl = `${APP_BASE_URL}/settings?upgrade=cancel`;
+    const session = await stripeClient.checkout.sessions.create({
+      mode: 'subscription',
+      customer_email: user.email || undefined,
+      metadata: { user_id: user.id },
+      subscription_data: {
+        metadata: { user_id: user.id },
+      },
+      line_items: [
+        { price: STRIPE_PRICE_ID, quantity: 1 },
+      ],
+      allow_promotion_codes: true,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    });
+    return res.json({ url: session.url });
+  } catch (err) {
+    console.error('POST /api/subscription/checkout error', err);
+    return res.status(500).json({ error: 'stripe_checkout_failed' });
+  }
+});
+
+app.post('/api/stripe/webhook', async (req, res) => {
+  if (!stripeClient || !STRIPE_WEBHOOK_SECRET) {
+    console.warn('Stripe webhook received but Stripe is not configured');
+    return res.status(200).json({ ignored: true });
+  }
+  const signature = req.headers['stripe-signature'];
+  let event;
+  try {
+    event = stripeClient.webhooks.constructEvent(req.rawBody, signature, STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Stripe webhook signature verification failed', err);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object;
+        const subscriptionId = session.subscription;
+        if (subscriptionId && typeof subscriptionId === 'string') {
+          const subscription = await stripeClient.subscriptions.retrieve(subscriptionId);
+          await syncStripeSubscription(subscription);
+        }
+        break;
+      }
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object;
+        await syncStripeSubscription(subscription);
+        break;
+      }
+      case 'invoice.payment_succeeded': {
+        const invoice = event.data.object;
+        if (invoice.subscription && typeof invoice.subscription === 'string') {
+          const subscription = await stripeClient.subscriptions.retrieve(invoice.subscription);
+          await syncStripeSubscription(subscription);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    return res.json({ received: true });
+  } catch (err) {
+    console.error('Stripe webhook handler error', err);
+    return res.status(500).send('Webhook handler failed');
+  }
+});
+
 app.get('/api/profile', async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -169,11 +301,11 @@ app.get('/api/profile', async (req, res) => {
   }
 });
 
-// ƒ†[ƒU‚Ì’¼‹ßŽÀÑ‚ð—v–ñ‚µ‚ÄLLM‚É“n‚¹‚éŒ`‚Ö
+// ç¹ï½¦ç¹ï½¼ç¹§ï½¶ç¸ºï½®é€¶ï½´éœ‘å¤§ï½®æº½ï½¸ï½¾ç¹§å®šï½¦âˆ«ï½´ãƒ»ï¼ ç¸ºï½¦LLMç¸ºï½«è²‚ï½¡ç¸ºå¸™ï½‹è –ï½¢ç¸ºï½¸
 async function buildUserSummary(userId) {
   if (!userId) return null;
 
-  // ƒvƒƒtƒB[ƒ‹
+  // ç¹åŠ±ÎŸç¹è¼”ã…ç¹ï½¼ç¹ï½«
   const { data: prof } = await supabase
     .from('profiles')
     .select('tz,goal_per_week')
@@ -182,7 +314,7 @@ async function buildUserSummary(userId) {
   const tz = prof?.tz || 'Asia/Tokyo';
   const goal = prof?.goal_per_week ?? 3;
 
-  // ’¼‹ß60“ú‚ÌƒZƒbƒVƒ‡ƒ“
+  // é€¶ï½´éœ‘ãƒ»0è­Œï½¥ç¸ºï½®ç¹§ï½»ç¹ãƒ»ã™ç¹ï½§ç¹ï½³
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - 59);
@@ -202,7 +334,7 @@ async function buildUserSummary(userId) {
     byDay.set(day, (byDay.get(day) || 0) + min);
   }
 
-  // ƒXƒgƒŠ[ƒN: ¡“ú‚©‚ç‘k‚é˜A‘±“ú”
+  // ç¹§ï½¹ç¹åŒ»Îœç¹ï½¼ç¹§ï½¯: èŽ‰é ‘å¾‹ç¸ºä¹ï½‰é©•ï½¡ç¹§çŸ©Â€ï½£é‚¯å£½å¾‹è¬¨ï½°
   const today = new Date();
   const key = (d) => d.toISOString().slice(0, 10);
   let streak = 0;
@@ -210,8 +342,8 @@ async function buildUserSummary(userId) {
   const d = new Date(today);
   while (set.has(key(d))) { streak++; d.setDate(d.getDate() - 1); }
 
-  // TEŒŽ‡Œv
-  const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay()); // “ú—jŽn‚Ü‚è
+  // é¨¾ï½±ç¹ï½»è­›äº¥ç²‹éšªãƒ»
+  const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay()); // è­Œï½¥è­–æ‡·ï½§ä¹âˆªç¹§ãƒ»
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const sumInRange = (from) =>
     (rows || [])
@@ -243,10 +375,10 @@ async function buildUserSummary(userId) {
   };
 }
 
-// ---- Dify Chatflow ‚ðSSE‚ÅƒvƒƒLƒV ----
-// POST /api/chat ‚ÅSSE‚ð•Ô‚·Bƒtƒƒ“ƒg‚Ífetch‚ÅReadableStream‚ð“Ç‚Þ‚©ASSE‚Æ‚µ‚Äˆµ‚¤
+// ---- Dify Chatflow ç¹§æ‹…SEç¸ºï½§ç¹åŠ±ÎŸç¹§ï½­ç¹§ï½· ----
+// POST /api/chat ç¸ºï½§SSEç¹§å®šï½¿æ–â˜†ç¸²ã‚…ãƒµç¹ï½­ç¹ï½³ç¹åŒ»ãƒ»fetchç¸ºï½§ReadableStreamç¹§å®šï½ªï½­ç¹§Â€ç¸ºä¹Â€ãƒ¾SEç¸ºï½¨ç¸ºåŠ±â€»è¬‡ï½±ç¸ºãƒ»
 app.post('/api/chat', async (req, res) => {
-  // ƒNƒ‰ƒCƒAƒ“ƒg‚ÖSSE‚ðƒI[ƒvƒ“
+  // ç¹§ï½¯ç¹ï½©ç¹§ï½¤ç¹§ï½¢ç¹ï½³ç¹åŒ»âˆˆSSEç¹§åµãŒç¹ï½¼ç¹åŠ±Î¦
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -257,7 +389,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { message, conversation_id, inputs, uid } = req.body || {};
 
-    // Supabase‚©‚ç—v–ñ‚ð\’z‚µAinputs‚É‡—¬
+    // Supabaseç¸ºä¹ï½‰éš•âˆ«ï½´ãƒ»ï½’è®’ç‹—ï½¯å³¨ï¼ ç¸²ï¼ˆnputsç¸ºï½«èœ·åŸŸï½µãƒ»
     const summary = await buildUserSummary(uid).catch(() => null);
     const mergedInputs = { ...(inputs || {}), ...(summary ? { user_summary: summary } : {}) };
 
@@ -283,7 +415,7 @@ app.post('/api/chat', async (req, res) => {
       return res.end();
     }
 
-    // Dify‚ÌSSE‚ð‚»‚Ì‚Ü‚ÜƒpƒCƒv
+    // Difyç¸ºï½®SSEç¹§åµâ—Žç¸ºï½®ç¸ºï½¾ç¸ºï½¾ç¹ä»£ã†ç¹ãƒ»
     for await (const chunk of upstream.body) res.write(chunk);
 
     clearInterval(heartbeat);
@@ -297,3 +429,7 @@ app.post('/api/chat', async (req, res) => {
 
 const port = process.env.PORT || 8787;
 app.listen(port, () => console.log('API on', port));
+
+
+
+

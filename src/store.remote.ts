@@ -51,6 +51,26 @@ export async function fetchProfile(): Promise<Profile | null> {
   return res.json();
 }
 
+
+export async function createStripeCheckoutSession(): Promise<{ url: string }> {
+  const headers = await authHeaders({ json: true });
+  const res = await fetch('/api/subscription/checkout', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    let message = 'stripe_checkout_failed';
+    try {
+      const err = await res.json();
+      if (err?.error) message = err.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
 export async function insertSession(sequence_slug: string, duration_sec: number) {
   const headers = await authHeaders({ json: true });
   const res = await fetch("/api/sessions", {

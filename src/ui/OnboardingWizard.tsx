@@ -5,8 +5,8 @@ import { fetchProfile, upsertProfile } from "../store.remote";
 import type { ExperienceLevel, Profile } from "../types";
 
 const TEXT = {
-  title: "\u30d7\u30ed\u30d5\u30a3\u30fc\u3092\u8a2d\u5b9a\u3057\u307e\u3057\u3087\u3046",
-  desc: "\u30ec\u30c3\u30b9\u30f3\u306e\u30ec\u30d9\u30eb\u306a\u3069\u306b\u5229\u7528\u3055\u308c\u307e\u3059\u3002",
+  title: "\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb\u3092\u8a2d\u5b9a\u3057\u307e\u3057\u3087\u3046",
+  desc: "\u3042\u306a\u305f\u306b\u5408\u308f\u305b\u305f\u30ec\u30c3\u30b9\u30b3\u30fc\u30b9\u3092\u6e96\u5099\u3059\u308b\u305f\u3081\u60c5\u5831\u3092\u8a2d\u5b9a\u3057\u307e\u3057\u3087\u3046",
   name: "\u30cb\u30c3\u30af\u30cd\u30fc\u30e0",
   namePh: "\u4f8b)\u3000\u307f\u306a\u3068",
   goal: "\u9031\u306b\u904b\u52d5\u3059\u308b\u56de\u6570",
@@ -24,12 +24,9 @@ const expOptions: { value: ExperienceLevel; label: string; desc: string }[] = [
 ];
 
 function needsOnboarding(profile: Profile | null) {
-  if (!profile) return true;
-  if (!profile.display_name) return true;
-  if (!profile.experience_level) return true;
-  if (!profile.goal_per_week || profile.goal_per_week < 1) return true;
-  return false;
+  return !profile;
 }
+
 
 export default function OnboardingFormOverlay() {
   const { user, loading } = useAuth();
@@ -64,7 +61,7 @@ export default function OnboardingFormOverlay() {
         setName("");
         setGoal(3);
         setExp("");
-        setVisible(true);
+        setVisible(false);
       });
     return () => {
       cancelled = true;

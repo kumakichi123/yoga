@@ -51,4 +51,10 @@ export type Profile = {
   tz?: string | null;
   display_name?: string | null;
   experience_level?: ExperienceLevel | null;
+  subscription_status?: string | null;
+  subscription_current_period_end?: string | null;
+  subscription_provider?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
 };
+

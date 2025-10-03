@@ -1,8 +1,1 @@
-[{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "app.vercel.yoga_snowy.twa",
-        "sha256_cert_fingerprints": ["22:A2:68:7C:02:37:3B:85:EE:72:DF:FE:C2:5D:22:42:69:31:A4:EE:D0:E9:81:6D:1A:CB:7B:4F:29:44:A1:1A"]
-      }
-    }]
+﻿[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"app.vercel.yoga_snowy.twa","sha256_cert_fingerprints":["22:A2:68:7C:02:37:3B:85:EE:72:DF:FE:C2:5D:22:42:69:31:A4:EE:D0:E9:81:6D:1A:CB:7B:4F:29:44:A1:1A"]}}]
