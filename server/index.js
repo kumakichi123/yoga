@@ -1,3 +1,4 @@
+import { syncStripeSubscription } from './stripeHelpers.js';
 // server/index.js
 import 'dotenv/config';
 import express from 'express';
@@ -45,39 +46,6 @@ function getAnonymousId(req) {
                 (typeof bodyAnon === 'string' && bodyAnon.trim().length) ? bodyAnon.trim() : null;
   return value;
 }
-function mapStripeStatus(status) {
-  if (!status) return 'free';
-  if (status === 'active' || status === 'trialing') return status;
-  if (status === 'past_due') return 'past_due';
-  return 'free';
-}
-
-async function syncStripeSubscription(subscription) {
-  if (!subscription) return;
-  const userId = subscription.metadata?.user_id;
-  if (!userId) {
-    console.warn('Stripe subscription missing user_id metadata');
-    return;
-  }
-  const normalizedStatus = mapStripeStatus(subscription.status);
-  const periodEndIso =
-    subscription.current_period_end && normalizedStatus !== 'free'
-      ? new Date(subscription.current_period_end * 1000).toISOString()
-      : null;
-  const payload = {
-    user_id: userId,
-    subscription_status: normalizedStatus,
-    subscription_current_period_end: periodEndIso,
-    subscription_provider: normalizedStatus === 'free' ? null : 'stripe',
-    stripe_customer_id: typeof subscription.customer === 'string' ? subscription.customer : null,
-    stripe_subscription_id: normalizedStatus === 'free' ? null : subscription.id,
-  };
-  const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'user_id' });
-  if (error) {
-    console.error('Supabase subscription sync error', error);
-  }
-}
-
 function ensureStripeConfigured(res) {
   if (!stripeClient || !STRIPE_PRICE_ID) {
     res.status(500).json({ error: 'stripe_not_configured' });
@@ -253,21 +221,21 @@ app.post('/api/stripe/webhook', async (req, res) => {
         const subscriptionId = session.subscription;
         if (subscriptionId && typeof subscriptionId === 'string') {
           const subscription = await stripeClient.subscriptions.retrieve(subscriptionId);
-          await syncStripeSubscription(subscription);
+          await syncStripeSubscription(supabase, subscription);
         }
         break;
       }
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
         const subscription = event.data.object;
-        await syncStripeSubscription(subscription);
+        await syncStripeSubscription(supabase, subscription);
         break;
       }
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object;
         if (invoice.subscription && typeof invoice.subscription === 'string') {
           const subscription = await stripeClient.subscriptions.retrieve(invoice.subscription);
-          await syncStripeSubscription(subscription);
+          await syncStripeSubscription(supabase, subscription);
         }
         break;
       }
@@ -434,6 +402,8 @@ app.post('/api/chat', async (req, res) => {
 
 const port = process.env.PORT || 8787;
 app.listen(port, () => console.log('API on', port));
+
+
 
 
 
