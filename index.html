@@ -96,6 +96,12 @@ a{color:var(--brand-dark)}
 .wizard-actions--center{justify-content:center}
 .wizard-actions--start{justify-content:flex-start}
   .history-locked__error{color:#d53f8c;font-size:14px}
+  .auth-shell{min-height:100vh;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:32px;align-items:center;padding:48px;background:var(--bg)}
+  .auth-hero{padding:32px;background:linear-gradient(135deg,rgba(168,85,247,0.16),rgba(241,234,254,0.6));border-radius:24px;box-shadow:0 18px 36px rgba(82,47,120,0.12);display:grid;gap:16px}
+  .auth-hero__title{margin:0;font-size:36px;color:var(--brand-dark)}
+  .auth-hero__lead{margin:0;font-size:18px;color:var(--text)}
+  .auth-hero__list{margin:0;padding-left:20px;color:var(--text);display:grid;gap:8px}
+  .auth-panel{padding:32px}
 
 /* Responsive */
 @media (max-width:520px){
@@ -177,13 +183,26 @@ a{color:var(--brand-dark)}
   .wizard-option{ padding:12px; border-radius:14px; }
 }
 
-  </style>
+    .chat-widget{position:fixed;bottom:24px;right:24px;z-index:60;display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+  .chat-widget__toggle{min-width:180px}
+  .chat-widget__panel{width:320px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:0 18px 36px rgba(82,47,120,0.24);padding:16px;display:flex;flex-direction:column;gap:12px}
+  .chat-widget__messages{max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px}
+  .chat-widget__bubble{padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.5;max-width:100%}
+  .chat-widget__bubble--assistant{background:var(--card-soft);color:var(--text);align-self:flex-start}
+  .chat-widget__bubble--user{background:var(--brand);color:#fff;align-self:flex-end}
+  .chat-widget__input{display:flex;gap:8px}
+  .chat-widget__input input{flex:1;padding:10px;border:1px solid var(--border);border-radius:12px}
+  .chat-widget__paywall{display:grid;gap:12px;text-align:center}
+  .chat-widget__actions{display:flex;gap:8px;justify-content:center}
+  .chat-widget__error{color:#d53f8c;font-size:13px}
+</style>
   <script type="module" src="/src/main.tsx"></script>
 </head>
 <body>
   <div id="root"></div>
 </body>
 </html>
+
 
 
 

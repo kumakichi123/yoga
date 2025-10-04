@@ -1,4 +1,4 @@
-﻿// server/index.js
+// server/index.js
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -284,6 +284,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
 app.get('/api/profile', async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
+    console.debug('GET /api/profile user', user?.id);
     if (!user) {
       return res.status(401).json({ error: 'auth_required' });
     }
@@ -292,8 +293,12 @@ app.get('/api/profile', async (req, res) => {
       .select('*')
       .eq('user_id', user.id)
       .maybeSingle();
+    console.debug('GET /api/profile supabase result', { data, error });
     if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (!data) {
+      console.debug('GET /api/profile returning 404 for user', user.id);
+      return res.status(404).json({ error: 'not_found' });
+    }
     return res.json(data);
   } catch (err) {
     console.error('GET /api/profile error', err);
@@ -301,11 +306,11 @@ app.get('/api/profile', async (req, res) => {
   }
 });
 
-// 繝ｦ繝ｼ繧ｶ縺ｮ逶ｴ霑大ｮ溽ｸｾ繧定ｦ∫ｴ・＠縺ｦLLM縺ｫ貂｡縺帙ｋ蠖｢縺ｸ
+// ユーザの直近実績を要紁E��てLLMに渡せる形へ
 async function buildUserSummary(userId) {
   if (!userId) return null;
 
-  // 繝励Ο繝輔ぅ繝ｼ繝ｫ
+  // プロフィール
   const { data: prof } = await supabase
     .from('profiles')
     .select('tz,goal_per_week')
@@ -314,7 +319,7 @@ async function buildUserSummary(userId) {
   const tz = prof?.tz || 'Asia/Tokyo';
   const goal = prof?.goal_per_week ?? 3;
 
-  // 逶ｴ霑・0譌･縺ｮ繧ｻ繝・す繝ｧ繝ｳ
+  // 直迁E0日のセチE��ョン
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - 59);
@@ -334,7 +339,7 @@ async function buildUserSummary(userId) {
     byDay.set(day, (byDay.get(day) || 0) + min);
   }
 
-  // 繧ｹ繝医Μ繝ｼ繧ｯ: 莉頑律縺九ｉ驕｡繧矩｣邯壽律謨ｰ
+  // ストリーク: 今日から遡る連続日数
   const today = new Date();
   const key = (d) => d.toISOString().slice(0, 10);
   let streak = 0;
@@ -342,8 +347,8 @@ async function buildUserSummary(userId) {
   const d = new Date(today);
   while (set.has(key(d))) { streak++; d.setDate(d.getDate() - 1); }
 
-  // 騾ｱ繝ｻ譛亥粋險・
-  const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay()); // 譌･譖懷ｧ九∪繧・
+  // 週・月合訁E
+  const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay()); // 日曜始まめE
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const sumInRange = (from) =>
     (rows || [])
@@ -375,10 +380,10 @@ async function buildUserSummary(userId) {
   };
 }
 
-// ---- Dify Chatflow 繧担SE縺ｧ繝励Ο繧ｭ繧ｷ ----
-// POST /api/chat 縺ｧSSE繧定ｿ斐☆縲ゅヵ繝ｭ繝ｳ繝医・fetch縺ｧReadableStream繧定ｪｭ繧縺九ヾSE縺ｨ縺励※謇ｱ縺・
+// ---- Dify Chatflow をSSEでプロキシ ----
+// POST /api/chat でSSEを返す。フロント�EfetchでReadableStreamを読むか、SSEとして扱ぁE
 app.post('/api/chat', async (req, res) => {
-  // 繧ｯ繝ｩ繧､繧｢繝ｳ繝医∈SSE繧偵が繝ｼ繝励Φ
+  // クライアントへSSEをオープン
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -389,7 +394,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { message, conversation_id, inputs, uid } = req.body || {};
 
-    // Supabase縺九ｉ隕∫ｴ・ｒ讒狗ｯ峨＠縲（nputs縺ｫ蜷域ｵ・
+    // Supabaseから要紁E��構築し、inputsに合流E
     const summary = await buildUserSummary(uid).catch(() => null);
     const mergedInputs = { ...(inputs || {}), ...(summary ? { user_summary: summary } : {}) };
 
@@ -415,7 +420,7 @@ app.post('/api/chat', async (req, res) => {
       return res.end();
     }
 
-    // Dify縺ｮSSE繧偵◎縺ｮ縺ｾ縺ｾ繝代う繝・
+    // DifyのSSEをそのままパイチE
     for await (const chunk of upstream.body) res.write(chunk);
 
     clearInterval(heartbeat);
@@ -429,6 +434,7 @@ app.post('/api/chat', async (req, res) => {
 
 const port = process.env.PORT || 8787;
 app.listen(port, () => console.log('API on', port));
+
 
 
 

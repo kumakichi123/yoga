@@ -1,5 +1,6 @@
-import { ensureAnonymousId } from "../lib/anonymous";
+﻿import { ensureAnonymousId } from "../lib/anonymous";
 import { supabase } from "../lib/supabase";
+import { apiUrl } from "./utils/api";
 import type { ExperienceLevel, Profile } from "./types";
 
 type HeaderMap = Record<string, string>;
@@ -45,7 +46,7 @@ export async function upsertProfile(update: ProfileUpdate) {
 
 export async function fetchProfile(): Promise<Profile | null> {
   const headers = await authHeaders();
-  const res = await fetch("/api/profile", { headers });
+  const res = await fetch(apiUrl("/api/profile"), { headers });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("profile_fetch_failed");
   return res.json();
@@ -54,7 +55,7 @@ export async function fetchProfile(): Promise<Profile | null> {
 
 export async function createStripeCheckoutSession(): Promise<{ url: string }> {
   const headers = await authHeaders({ json: true });
-  const res = await fetch('/api/subscription/checkout', {
+  const res = await fetch(apiUrl('/api/subscription/checkout'), {
     method: 'POST',
     headers,
     body: JSON.stringify({}),
@@ -73,7 +74,7 @@ export async function createStripeCheckoutSession(): Promise<{ url: string }> {
 }
 export async function insertSession(sequence_slug: string, duration_sec: number) {
   const headers = await authHeaders({ json: true });
-  const res = await fetch("/api/sessions", {
+  const res = await fetch(apiUrl("/api/sessions"), {
     method: "POST",
     headers,
     body: JSON.stringify({ sequence_slug, duration_sec }),
@@ -84,7 +85,7 @@ export async function insertSession(sequence_slug: string, duration_sec: number)
 export async function fetchMonthSessions(year: number, month: number) {
   const headers = await authHeaders();
   const params = new URLSearchParams({ year: String(year), month: String(month) });
-  const res = await fetch(`/api/sessions/month?${params.toString()}`, { headers });
+  const res = await fetch(apiUrl(`/api/sessions/month?${params.toString()}`), { headers });
   if (res.status === 404) return [];
   if (!res.ok) throw new Error("month_sessions_failed");
   const json = await res.json();
@@ -93,7 +94,7 @@ export async function fetchMonthSessions(year: number, month: number) {
 
 export async function fetchTotals() {
   const headers = await authHeaders();
-  const res = await fetch("/api/sessions/totals", { headers });
+  const res = await fetch(apiUrl("/api/sessions/totals"), { headers });
   if (res.status === 404) return { sessions: 0, seconds: 0 };
   if (!res.ok) throw new Error("totals_fetch_failed");
   const json = await res.json();
@@ -109,7 +110,7 @@ export async function linkAnonymousSessions() {
     "Authorization": `Bearer ${token}`,
     "X-Anonymous-Id": anon,
   };
-  const res = await fetch("/api/sessions/link", {
+  const res = await fetch(apiUrl("/api/sessions/link"), {
     method: "POST",
     headers,
     body: JSON.stringify({ anonymous_id: anon }),
@@ -117,3 +118,6 @@ export async function linkAnonymousSessions() {
   if (!res.ok) throw new Error("link_failed");
   return res.json();
 }
+
+
+

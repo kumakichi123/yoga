@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { sequences } from "../data";
 import { useNavigate } from "react-router-dom";
+import ChatWidget from "../ui/ChatWidget";
 
 function minutesOf(durationSec: number) {
   return Math.round(durationSec / 60);
@@ -27,7 +28,8 @@ export default function Yoga() {
   );
 
   return (
-    <div className="row">
+    <>
+      <div className="row">
       {durations.length > 0 && (
         <div className="tabs" style={{ marginTop: 4 }}>
           {durations.map((value) => (
@@ -56,6 +58,8 @@ export default function Yoga() {
           <div className="muted">該当するメニューがありません。</div>
         )}
       </div>
-    </div>
+      </div>
+      <ChatWidget />
+    </>
   );
 }

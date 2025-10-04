@@ -106,11 +106,5 @@ export const sequences: Sequence[] = [
     tags: ["refresh"],
     steps: ["breath", "child", "cat-cow"],
   }),
-  buildSequence({
-    slug: "focus-10min",
-    title: { ja: "集中10分シークエンス" },
-    level: 2,
-    tags: ["focus"],
-    steps: ["breath", "cat-cow", "child", "breath", "child", "cat-cow"],
-  }),
 ];
+

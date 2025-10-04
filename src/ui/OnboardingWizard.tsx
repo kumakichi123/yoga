@@ -1,4 +1,4 @@
-﻿// src/components/OnboardingFormOverlay.tsx
+// src/components/OnboardingFormOverlay.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { fetchProfile, upsertProfile } from "../store.remote";
@@ -23,10 +23,27 @@ const expOptions: { value: ExperienceLevel; label: string; desc: string }[] = [
   { value: "advanced", label: "\u4e0a\u7d1a", desc: "\u5f62\u3084\u30d5\u30ed\u30fc\u306b\u81ea\u4fe1\u304c\u3042\u308a\u307e\u3059\u3002" },
 ];
 
-function needsOnboarding(profile: Profile | null) {
-  return !profile;
+function normalizeGoal(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
+function isProfileComplete(profile: Profile | null) {
+  if (!profile) return false;
+  const hasName = typeof profile.display_name === "string" && profile.display_name.trim().length > 0;
+  const hasExperience = typeof profile.experience_level === "string" && profile.experience_level.trim().length > 0;
+  const goalValue = normalizeGoal(profile.goal_per_week ?? null);
+  const hasGoal = goalValue !== null && goalValue > 0;
+  return hasName && hasExperience && hasGoal;
+}
+
+function needsOnboarding(profile: Profile | null) {
+  return !isProfileComplete(profile);
+}
 
 export default function OnboardingFormOverlay() {
   const { user, loading } = useAuth();
@@ -49,11 +66,13 @@ export default function OnboardingFormOverlay() {
     fetchProfile()
       .then((p) => {
         if (cancelled) return;
-        setProfile(p);
+        const goalValue = normalizeGoal(p?.goal_per_week ?? null);
+        const nextProfile = p ? { ...p, goal_per_week: goalValue } : p;
+        setProfile(nextProfile);
         setName(p?.display_name ?? "");
-        setGoal(p?.goal_per_week && p.goal_per_week > 0 ? p.goal_per_week : 3);
+        setGoal(goalValue !== null && goalValue > 0 ? goalValue : 3);
         setExp((p?.experience_level as ExperienceLevel) ?? "");
-        setVisible(needsOnboarding(p));
+        setVisible(needsOnboarding(nextProfile));
       })
       .catch(() => {
         if (cancelled) return;
