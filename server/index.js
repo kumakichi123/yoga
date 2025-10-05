@@ -54,6 +54,28 @@ function ensureStripeConfigured(res) {
   return true;
 }
 
+function startOfWeekKey(date = new Date()) {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  const day = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() - day);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dayNum = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${dayNum}`;
+}
+
+function isProfileSubscriptionActive(profile) {
+  if (!profile) return false;
+  const status = profile?.subscription_status;
+  if (!status) return false;
+  if (status === 'active' || status === 'trialing') {
+    if (!profile.subscription_current_period_end) return true;
+    return new Date(profile.subscription_current_period_end).getTime() > Date.now();
+  }
+  return false;
+}
+
 
 app.post('/api/sessions', async (req, res) => {
   try {
@@ -201,6 +223,39 @@ app.post('/api/subscription/checkout', async (req, res) => {
   }
 });
 
+app.post('/api/subscription/cancel', async (req, res) => {
+  try {
+    if (!ensureStripeConfigured(res)) return;
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      return res.status(401).json({ error: 'auth_required' });
+    }
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('stripe_subscription_id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (profileError) throw profileError;
+    const subscriptionId = profile?.stripe_subscription_id;
+    if (!subscriptionId) {
+      return res.status(400).json({ error: 'no_active_subscription' });
+    }
+    if (!stripeClient) {
+      return res.status(500).json({ error: 'stripe_not_configured' });
+    }
+    const updated = await stripeClient.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+    await syncStripeSubscription(supabase, updated);
+    return res.json({
+      cancel_at_period_end: Boolean(updated.cancel_at_period_end),
+      current_period_end: updated.current_period_end ? new Date(updated.current_period_end * 1000).toISOString() : null,
+    });
+  } catch (err) {
+    console.error('POST /api/subscription/cancel error', err);
+    return res.status(500).json({ error: 'subscription_cancel_failed' });
+  }
+});
+
+
 app.post('/api/stripe/webhook', async (req, res) => {
   if (!stripeClient || !STRIPE_WEBHOOK_SECRET) {
     console.warn('Stripe webhook received but Stripe is not configured');
@@ -225,6 +280,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
         }
         break;
       }
+      case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
         const subscription = event.data.object;
@@ -274,7 +330,7 @@ app.get('/api/profile', async (req, res) => {
   }
 });
 
-// ユーザの直近実績を要紁E��てLLMに渡せる形へ
+// ユーザの直近実績を要紁E��てLLMに渡せる形へ
 async function buildUserSummary(userId) {
   if (!userId) return null;
 
@@ -287,7 +343,7 @@ async function buildUserSummary(userId) {
   const tz = prof?.tz || 'Asia/Tokyo';
   const goal = prof?.goal_per_week ?? 3;
 
-  // 直迁E0日のセチE��ョン
+  // 直迁E0日のセチE��ョン
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - 59);
@@ -349,31 +405,77 @@ async function buildUserSummary(userId) {
 }
 
 // ---- Dify Chatflow をSSEでプロキシ ----
-// POST /api/chat でSSEを返す。フロント�EfetchでReadableStreamを読むか、SSEとして扱ぁE
+// POST /api/chat でSSEを返す。フロント�EfetchでReadableStreamを読むか、SSEとして扱ぁE
 app.post('/api/chat', async (req, res) => {
-  // クライアントへSSEをオープン
+  const { message, conversation_id, inputs, uid } = req.body || {};
+
+  if (!uid || typeof uid !== 'string') {
+    return res.status(400).json({ error: 'missing_uid' });
+  }
+
+  const trimmedMessage = typeof message === 'string' ? message.trim() : '';
+  if (!trimmedMessage) {
+    return res.status(400).json({ error: 'empty_message' });
+  }
+
+  try {
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('subscription_status, subscription_current_period_end')
+      .eq('user_id', uid)
+      .maybeSingle();
+    if (profileError) throw profileError;
+    const paid = isProfileSubscriptionActive(profile);
+
+    if (!paid) {
+      const adminUser = await supabase.auth.admin.getUserById(uid);
+      if (adminUser.error) throw adminUser.error;
+      const adminRecord = adminUser.data?.user;
+      if (!adminRecord) {
+        return res.status(404).json({ error: 'user_not_found' });
+      }
+      const metadata = adminRecord.user_metadata || {};
+      const weekKey = startOfWeekKey();
+      let count = Number(metadata.free_chat_count) || 0;
+      let storedWeek = typeof metadata.free_chat_week === 'string' ? metadata.free_chat_week : '';
+      if (storedWeek !== weekKey) {
+        storedWeek = weekKey;
+        count = 0;
+      }
+      if (count >= 10) {
+        return res.status(429).json({ error: 'free_chat_limit', limit: 10 });
+      }
+      const newMetadata = Object.assign({}, metadata, {
+        free_chat_week: storedWeek,
+        free_chat_count: count + 1,
+      });
+      const update = await supabase.auth.admin.updateUserById(uid, { user_metadata: newMetadata });
+      if (update.error) throw update.error;
+    }
+  } catch (err) {
+    console.error('POST /api/chat preflight error', err);
+    return res.status(500).json({ error: 'chat_init_failed' });
+  }
+
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
     'Connection': 'keep-alive',
   });
-  const heartbeat = setInterval(() => res.write(`: ping\n\n`), 15000);
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 15000);
 
   try {
-    const { message, conversation_id, inputs, uid } = req.body || {};
-
-    // Supabaseから要紁E��構築し、inputsに合流E
     const summary = await buildUserSummary(uid).catch(() => null);
-    const mergedInputs = { ...(inputs || {}), ...(summary ? { user_summary: summary } : {}) };
+    const mergedInputs = Object.assign({}, inputs || {}, summary ? { user_summary: summary } : {});
 
-    const upstream = await fetch(`${process.env.DIFY_BASE}/v1/chat-messages`, {
+    const upstream = await fetch((process.env.DIFY_BASE || '') + '/v1/chat-messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.DIFY_API_KEY}`,
+        Authorization: 'Bearer ' + process.env.DIFY_API_KEY,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        query: message || '',
+        query: trimmedMessage,
         inputs: mergedInputs,
         response_mode: 'streaming',
         conversation_id: conversation_id || undefined,
@@ -383,22 +485,22 @@ app.post('/api/chat', async (req, res) => {
 
     if (!upstream.ok || !upstream.body) {
       const text = await upstream.text().catch(() => '');
-      res.write(`event: error\ndata: ${JSON.stringify({ status: upstream.status, text })}\n\n`);
+      res.write('event: error\ndata: ' + JSON.stringify({ status: upstream.status, text }) + '\n\n');
       clearInterval(heartbeat);
       return res.end();
     }
 
-    // DifyのSSEをそのままパイチE
     for await (const chunk of upstream.body) res.write(chunk);
 
     clearInterval(heartbeat);
     return res.end();
   } catch (err) {
-    res.write(`event: error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`);
+    res.write('event: error\ndata: ' + JSON.stringify({ error: String(err) }) + '\n\n');
     clearInterval(heartbeat);
     return res.end();
   }
 });
+
 
 const port = process.env.PORT || 8787;
 app.listen(port, () => console.log('API on', port));

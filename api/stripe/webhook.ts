@@ -43,7 +43,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'invalid_body' });
   }
 
-  const stripe = new Stripe(stripeSecret, { apiVersion: '2024-06-20' });
+const stripe = new Stripe(stripeSecret, { apiVersion: '2023-08-16' });
+
   const signature = req.headers['stripe-signature'];
   if (!signature) {
     return res.status(400).json({ error: 'missing_signature' });

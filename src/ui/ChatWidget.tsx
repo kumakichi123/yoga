@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useProfile } from "../hooks/useProfile";
@@ -12,24 +12,25 @@ import {
 } from "../store.remote";
 
 const TEXT = {
-  toggleOpen: "AIアシスタント",
-  toggleClose: "閉じる",
-  inputPlaceholder: "メッセージを入力",
-  send: "送信",
-  loginPrompt: "ログインするとAIチャットをご利用いただけます。",
-  login: "ログイン",
-  signup: "新規登録",
-  paywallTitle: "プレミアムプランが必要です",
-  paywallMessage: "AIチャットは月額580円のプレミアムプランで解放されます。",
-  upgrade: "アップグレード",
-  loading: "読み込み中...",
-  upgradeLoading: "リダイレクト中...",
-  upgradeError: "決済ページの取得に失敗しました。時間を置いて再試行してください。",
+  toggleOpen: "AI\u30a2\u30b7\u30b9\u30bf\u30f3\u30c8",
+  toggleClose: "\u3068\u3058\u308b",
+  inputPlaceholder: "\u30e1\u30c3\u30bb\u30fc\u30b8\u3092\u5165\u529b",
+  send: "\u9001\u4fe1",
+  loginPrompt: "\u30ed\u30b0\u30a4\u30f3\u3059\u308b\u3068AI\u30c1\u30e3\u30c3\u30c8\u3092\u3054\u5229\u7528\u3044\u305f\u3060\u3051\u307e\u3059\u3002",
+  login: "\u30ed\u30b0\u30a4\u30f3",
+  signup: "\u65b0\u898f\u767b\u9332",
+  freeNotice: "\u7121\u6599\u30d7\u30e9\u30f3\u3067\u306fAI\u30c1\u30e3\u30c3\u30c8\u3092\u903110\u901a\u307e\u3067\u3054\u5229\u7528\u3044\u305f\u3060\u3051\u307e\u3059\u3002",
+  upgrade: "\u30d7\u30ec\u30df\u30a2\u30e0\u306b\u30a2\u30c3\u30d7\u30b0\u30ec\u30fc\u30c9",
+  loading: "\u8aad\u307f\u8fbc\u3093\u3067\u3044\u307e\u3059\u2026",
+  upgradeLoading: "\u30ea\u30c0\u30a4\u30ec\u30af\u30c8\u4e2d\u2026",
+  upgradeError: "\u6c7a\u6e08\u30da\u30fc\u30b8\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u6642\u9593\u3092\u7f6e\u3044\u3066\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002",
+  limitReached: "\u30c1\u30e3\u30c3\u30c8\u306f\u903110\u901a\u307e\u3067\u3067\u3059\u3002\u30d7\u30ec\u30df\u30a2\u30e0\u30d7\u30e9\u30f3\u3092\u3054\u691c\u8a0e\u304f\u3060\u3055\u3044\u3002",
+  sendError: "\u30c1\u30e3\u30c3\u30c8\u306e\u9001\u4fe1\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u6642\u9593\u3092\u304a\u3044\u3066\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002",
 } as const;
 
 function formatMinutes(seconds: number) {
   const minutes = Math.round(seconds / 60);
-  return `${minutes}分`;
+  return `${minutes}\u5206`;
 }
 
 function computeStreak(rows: Array<{ completed_at: string }>) {
@@ -52,14 +53,14 @@ function buildDefaultMessage(
   totalSeconds: number
 ) {
   if (streak >= 3) {
-    return `素晴らしいですね！${streak}日連続で継続中です。この勢いで続けましょう。`;
+    return `\u7d76\u597d\u8abf\u3067\u3059\u306d\uff01${streak}\u65e5\u9023\u7d9a\u3067\u7df4\u7fd2\u3057\u3066\u3044\u307e\u3059\u3002\u3053\u306e\u8abf\u5b50\u3067\u7d9a\u3051\u307e\u3057\u3087\u3046\u3002`;
   }
   if (totalSessions > 0) {
-    return `これまでに${totalSessions}回のセッションを完了しています。累計${formatMinutes(
+    return `\u3053\u308c\u307e\u3067\u306b${totalSessions}\u56de\u306e\u30bb\u30c3\u30b7\u30e7\u30f3\u3092\u5b8c\u4e86\u3057\u3066\u3044\u307e\u3059\u3002\u7dcf\u8a08${formatMinutes(
       totalSeconds
-    )}取り組みました。今日はどんな気分ですか？`;
+    )}\u53d6\u308a\u7d44\u3093\u3067\u3044\u307e\u3059\u3002\u4eca\u65e5\u306f\u3069\u3093\u306a\u6c17\u5206\u3067\u3059\u304b\uff1f`;
   }
-  return "初めまして！まずは3分メニューから始めてみませんか？";
+  return "\u307e\u305a\u306f3\u5206\u30e1\u30cb\u30e5\u30fc\u304b\u3089\u306f\u3058\u3081\u3066\u307f\u307e\u3057\u3087\u3046\u304b\uff1f";
 }
 
 export default function ChatWidget() {
@@ -76,6 +77,7 @@ export default function ChatWidget() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [monthSeconds, setMonthSeconds] = useState(0);
   const [totals, setTotals] = useState({ sessions: 0, seconds: 0 });
+  const [sending, setSending] = useState(false);
 
   const overallLoading = loading || profileLoading || statsLoading;
 
@@ -132,8 +134,8 @@ export default function ChatWidget() {
   }, [loadStats]);
 
   const canSend = useMemo(
-    () => input.trim().length > 0,
-    [input]
+    () => input.trim().length > 0 && !sending,
+    [input, sending]
   );
 
   async function handleUpgrade() {
@@ -156,40 +158,78 @@ export default function ChatWidget() {
       navigate("/auth?mode=signin&redirect=/", { state: { from: "/" } });
       return;
     }
-    if (!isPaid) {
-      handleUpgrade();
-      return;
-    }
+
     const trimmed = input.trim();
     const timestamp = new Date().toISOString();
     const outgoing: ChatMsg = { role: "user", text: trimmed, at: timestamp };
-    const hint =
-      monthSeconds === 0
-        ? "今日は3分メニューから軽く始めてみましょう。"
-        : monthSeconds < 600
-        ? "良いペースです。あと一回でより習慣化できますよ。"
-        : "素晴らしい継続力です！身体の様子はいかがですか？";
-    const reply: ChatMsg = {
-      role: "assistant",
-      text: `${hint}`,
-      at: timestamp,
-    };
-    setMessages((prev) => [...prev, outgoing, reply]);
+    setMessages((prev) => [...prev, outgoing]);
     setInput("");
-    fetch(apiUrl("/api/chat"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: trimmed,
-        conversation_id: "home-chat",
-        inputs: {
-          total_sessions: totals.sessions,
-          total_seconds: totals.seconds,
-          month_seconds: monthSeconds,
-        },
-        uid: user.id,
-      }),
-    }).catch(() => undefined);
+    setSending(true);
+
+    try {
+      const response = await fetch(apiUrl("/api/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: trimmed,
+          conversation_id: "home-chat",
+          inputs: {
+            total_sessions: totals.sessions,
+            total_seconds: totals.seconds,
+            month_seconds: monthSeconds,
+          },
+          uid: user.id,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorText = TEXT.sendError;
+        if (response.status === 429) {
+          errorText = TEXT.limitReached;
+        } else {
+          try {
+            const err = await response.json();
+            if (err?.error === "free_chat_limit") {
+              errorText = TEXT.limitReached;
+            }
+          } catch {
+            // ignore
+          }
+        }
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: errorText, at: new Date().toISOString() },
+        ]);
+        return;
+      }
+
+      if (response.body?.cancel) {
+        try {
+          await response.body.cancel();
+        } catch {
+          // ignore
+        }
+      }
+
+      const hint =
+        monthSeconds === 0
+          ? "\u307e\u305a\u306f3\u5206\u30e1\u30cb\u30e5\u30fc\u304b\u3089\u8a66\u3057\u3066\u307f\u307e\u3057\u3087\u3046\u3002"
+          : monthSeconds < 600
+          ? "\u3044\u3044\u30da\u30fc\u30b9\u3067\u3059\uff01\u3082\u30461\u672c\u8efd\u3081\u306e\u30e1\u30cb\u30e5\u30fc\u3092\u8ffd\u52a0\u3057\u3066\u307f\u307e\u3059\u304b\uff1f"
+          : "\u7d20\u6674\u3089\u3057\u3044\u7d99\u7d9a\u529b\u3067\u3059\u3002\u6b21\u306f\u3069\u3093\u306a\u7df4\u7fd2\u304c\u3057\u305f\u3044\u3067\u3059\u304b\uff1f";
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: hint, at: new Date().toISOString() },
+      ]);
+    } catch (err) {
+      console.error("chat send error", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: TEXT.sendError, at: new Date().toISOString() },
+      ]);
+    } finally {
+      setSending(false);
+    }
   }
 
   function renderPanelContent() {
@@ -215,23 +255,19 @@ export default function ChatWidget() {
       );
     }
 
-    if (!isPaid) {
-      return (
-        <div className="chat-widget__paywall">
-          <h3>{TEXT.paywallTitle}</h3>
-          <p>{TEXT.paywallMessage}</p>
-          {checkoutError && (
-            <div className="chat-widget__error">{checkoutError}</div>
-          )}
-          <button className="btn primary" onClick={handleUpgrade} disabled={checkoutLoading}>
-            {checkoutLoading ? TEXT.upgradeLoading : TEXT.upgrade}
-          </button>
-        </div>
-      );
-    }
-
     return (
       <>
+        {!isPaid && (
+          <div className="chat-widget__paywall" style={{ rowGap: 8 }}>
+            <p className="muted" style={{ margin: 0 }}>{TEXT.freeNotice}</p>
+            {checkoutError && (
+              <div className="chat-widget__error" style={{ margin: 0 }}>{checkoutError}</div>
+            )}
+            <button className="btn" onClick={handleUpgrade} disabled={checkoutLoading}>
+              {checkoutLoading ? TEXT.upgradeLoading : TEXT.upgrade}
+            </button>
+          </div>
+        )}
         <div className="chat-widget__messages">
           {messages.map((msg, idx) => (
             <div key={idx} className={`chat-widget__bubble chat-widget__bubble--${msg.role}`}>
@@ -255,7 +291,7 @@ export default function ChatWidget() {
                 handleSend();
               }
             }}
-            disabled={checkoutLoading}
+            disabled={sending}
           />
           <button className="btn primary" onClick={handleSend} disabled={!canSend}>
             {TEXT.send}
@@ -281,5 +317,3 @@ export default function ChatWidget() {
     </div>
   );
 }
-
-

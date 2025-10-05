@@ -1,4 +1,4 @@
-﻿// src/main.tsx
+// src/main.tsx
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
@@ -8,6 +8,7 @@ import Shell from "./ui/Shell";
 import Yoga from "./pages/Yoga";
 import History from "./pages/History";
 import Settings from "./pages/Settings";
+import Cancel from "./pages/Cancel";
 import PlayPage from "./pages/PlayPage";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
     { index: true, element: <Yoga/> },
     { path: "history", element: <History/> },
     { path: "settings", element: <Settings/> },
+    { path: "settings/cancel", element: <Cancel/> },
   ]},
   { path: "/auth", element: <AuthPage/> },
   { path: "/play/:slug", element: <PlayPage/> },
@@ -32,3 +34,4 @@ const router = createBrowserRouter([
 ]);
 
 createRoot(document.getElementById("root")!).render(<RouterProvider router={router} />);
+

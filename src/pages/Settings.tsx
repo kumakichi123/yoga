@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth, signOut } from "../hooks/useAuth";
 import { useProfile } from "../hooks/useProfile";
@@ -13,6 +13,7 @@ const experienceLabels: Record<ExperienceLevel, string> = {
 };
 
 const TEXT = {
+  cancelLink: "\u89e3\u7d04\u30da\u30fc\u30b8\u3078",
   accountTitle: "\u30a2\u30ab\u30a6\u30f3\u30c8",
   accountDescription: "\u30ed\u30b0\u30a4\u30f3\u60c5\u5831\u3068\u8868\u793a\u540d\u306f\u3001\u3053\u3053\u3067\u5909\u66f4\u3067\u304d\u307e\u3059\u3002",
   accountFallback: "\u30d8\u30c3\u30c0\u30fc\u306e\u30ed\u30b0\u30a4\u30f3\u30dc\u30bf\u30f3\u304b\u3089\u30b5\u30a4\u30f3\u30a4\u30f3\u3067\u304d\u307e\u3059\u3002",
@@ -22,7 +23,7 @@ const TEXT = {
   planTitle: "\u30d7\u30e9\u30f3",
   planActive: "\u30d7\u30ec\u30df\u30a2\u30e0\u30d7\u30e9\u30f3\u3092\u3054\u5229\u7528\u4e2d\u3067\u3059",
   planActiveWithDate: "\uff08\u6b21\u56de\u66f4\u65b0: {date}\uff09",
-  planFree: "\u73fe\u5728\u306f\u7121\u6599\u30d7\u30e9\u30f3\u3067\u3059\u3002AI\u30c1\u30e3\u30c3\u30c8\u3068\u5c65\u6b74\u306e\u8a73\u7d30\u306f\u30d7\u30ec\u30df\u30a2\u30e0\u30d7\u30e9\u30f3\uff08\u6708\u984d580\u5186\uff09\u3067\u3054\u5229\u7528\u3044\u305f\u3060\u3051\u307e\u3059\u3002",
+  planFree: "\u73fe\u5728\u306f\u7121\u6599\u30d7\u30e9\u30f3\u3067\u3059\u3002AI\u30c1\u30e3\u30c3\u30c8\u306f\u903110\u901a\u307e\u3067\u3054\u5229\u7528\u3044\u305f\u3060\u3051\u307e\u3059\u3002\u5c65\u6b74\u306e\u8a73\u7d30\u306f\u30d7\u30ec\u30df\u30a2\u30e0\u30d7\u30e9\u30f3\uff08\u6708\u984d580\u5186\uff09\u3067\u3054\u5229\u7528\u3044\u305f\u3060\u3051\u307e\u3059\u3002",
   upgrade: "\u30a2\u30c3\u30d7\u30b0\u30ec\u30fc\u30c9",
   upgradeLoading: "\u30ea\u30c0\u30a4\u30ec\u30af\u30c8\u4e2d...",
   upgradeError: "\u6c7a\u6e08\u30da\u30fc\u30b8\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u6642\u9593\u3092\u7f6e\u3044\u3066\u304b\u3089\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002",
@@ -162,10 +163,14 @@ export default function Settings() {
         <p className="muted">{planLine}</p>
         {checkoutError && <div style={{ color: "#d53f8c" }}>{checkoutError}</div>}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {!isPaid && (
+          {!isPaid ? (
             <button className="btn primary" onClick={handleUpgrade} disabled={checkoutLoading || !user}>
               {checkoutLoading ? TEXT.upgradeLoading : TEXT.upgrade}
             </button>
+          ) : (
+            <Link className="btn" to="/settings/cancel">
+              {TEXT.cancelLink}
+            </Link>
           )}
         </div>
       </div>
@@ -227,5 +232,4 @@ export default function Settings() {
     </div>
   );
 }
-
 

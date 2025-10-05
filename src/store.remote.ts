@@ -1,4 +1,4 @@
-﻿import { ensureAnonymousId } from "../lib/anonymous";
+import { ensureAnonymousId } from "../lib/anonymous";
 import { supabase } from "../lib/supabase";
 import { apiUrl } from "./utils/api";
 import type { ExperienceLevel, Profile } from "./types";
@@ -119,5 +119,23 @@ export async function linkAnonymousSessions() {
   return res.json();
 }
 
-
+export async function cancelStripeSubscription(): Promise<{ cancel_at_period_end: boolean; current_period_end: string | null }> {
+  const headers = await authHeaders({ json: true });
+  const res = await fetch(apiUrl('/api/subscription/cancel'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    let message = 'subscription_cancel_failed';
+    try {
+      const err = await res.json();
+      if (err?.error) message = err.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
 
