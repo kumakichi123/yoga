@@ -322,11 +322,12 @@ async function handleChat(env: Env, request: Request) {
 
 async function handleFetch(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const supabase = getSupabase(env);
 
   if (request.method === "OPTIONS") {
     return handleCorsPreflight(request);
   }
+
+  const supabase = getSupabase(env);
 
   if (request.method === "POST" && url.pathname === "/api/sessions") {
     const body = (await readJson(request)) || {};
