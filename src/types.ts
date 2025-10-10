@@ -5,6 +5,9 @@ export type Pose = {
   name: LangText;
   cues: LangText[];
   imageUrl?: string;
+  level: 1 | 2 | 3;
+  tags?: string[];
+  areas?: string[];
 };
 
 export type PoseBlueprint = Pose & {
@@ -25,6 +28,7 @@ export type Step = {
 export type Sequence = {
   slug: string;
   title: LangText;
+  thumbnailUrl?: string;
   durationSec: number;
   level: 1 | 2 | 3;
   steps: Step[];
@@ -57,4 +61,5 @@ export type Profile = {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
 };
+
 

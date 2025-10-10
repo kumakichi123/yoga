@@ -46,7 +46,13 @@ export default function Yoga() {
       <div className="cards">
         {list.map((seq) => (
           <div className="card row" key={seq.slug}>
-            <div className="thumb"><span className="muted">{seq.title.ja}</span></div>
+            <div className="thumb">
+              {seq.thumbnailUrl ? (
+                <img src={seq.thumbnailUrl} alt={seq.title.ja} loading="lazy" />
+              ) : (
+                <span className="muted">{seq.title.ja}</span>
+              )}
+            </div>
             <div style={{ fontWeight: 700 }}>{seq.title.ja}</div>
             <div className="muted">{minutesOf(seq.durationSec)}分 / レベル{seq.level}</div>
             <button className="btn primary" onClick={() => nav(`/play/${seq.slug}`)}>

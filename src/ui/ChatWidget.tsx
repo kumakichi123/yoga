@@ -12,7 +12,7 @@ import {
 } from "../store.remote";
 
 const TEXT = {
-  toggleOpen: "AI\u30a2\u30b7\u30b9\u30bf\u30f3\u30c8",
+  toggleOpen: "AI\u306B\u76F8\u8AC7\u3057\u3066\u307F\u308B",
   toggleClose: "\u3068\u3058\u308b",
   inputPlaceholder: "\u30e1\u30c3\u30bb\u30fc\u30b8\u3092\u5165\u529b",
   send: "\u9001\u4fe1",
@@ -69,6 +69,44 @@ export default function ChatWidget() {
   const { profile, loading: profileLoading } = useProfile();
   const isPaid = isSubscriptionActive(profile);
 
+
+const conversationStorageKey = useMemo(
+  () => (user?.id ? `chat.conversationId.${user.id}` : null),
+  [user?.id]
+);
+const [conversationId, setConversationId] = useState<string | null>(null);
+
+useEffect(() => {
+  if (!conversationStorageKey) {
+    setConversationId(null);
+    return;
+  }
+  if (typeof window === "undefined") return;
+  try {
+    const stored = window.localStorage.getItem(conversationStorageKey);
+    setConversationId(stored || null);
+  } catch {
+    setConversationId(null);
+  }
+}, [conversationStorageKey]);
+
+const persistConversationId = useCallback(
+  (value: string | null) => {
+    setConversationId(value);
+    if (!conversationStorageKey || typeof window === "undefined") return;
+    try {
+      if (value) {
+        window.localStorage.setItem(conversationStorageKey, value);
+      } else {
+        window.localStorage.removeItem(conversationStorageKey);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  },
+  [conversationStorageKey]
+);
+
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -78,6 +116,17 @@ export default function ChatWidget() {
   const [monthSeconds, setMonthSeconds] = useState(0);
   const [totals, setTotals] = useState({ sessions: 0, seconds: 0 });
   const [sending, setSending] = useState(false);
+
+
+  const renderMessageText = useCallback((text: string) => {
+    const parts = text.split(/(?:\r\n|\r|\n)/);
+    return parts.map((part, idx) => (
+      <React.Fragment key={idx}>
+        {part === "" ? "\u00a0" : part}
+        {idx < parts.length - 1 ? <br /> : null}
+      </React.Fragment>
+    ));
+  }, []);
 
   const overallLoading = loading || profileLoading || statsLoading;
 
@@ -152,6 +201,8 @@ export default function ChatWidget() {
     }
   }
 
+  
+
   async function handleSend() {
     if (!canSend) return;
     if (!user) {
@@ -172,7 +223,7 @@ export default function ChatWidget() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: trimmed,
-          conversation_id: "home-chat",
+          conversation_id: conversationId ?? undefined,
           inputs: {
             total_sessions: totals.sessions,
             total_seconds: totals.seconds,
@@ -193,7 +244,7 @@ export default function ChatWidget() {
               errorText = TEXT.limitReached;
             }
           } catch {
-            // ignore
+            // ignore JSON parse errors
           }
         }
         setMessages((prev) => [
@@ -203,24 +254,174 @@ export default function ChatWidget() {
         return;
       }
 
-      if (response.body?.cancel) {
-        try {
-          await response.body.cancel();
-        } catch {
-          // ignore
-        }
+      const reader = response.body?.getReader();
+      if (!reader) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: TEXT.sendError, at: new Date().toISOString() },
+        ]);
+        return;
       }
 
-      const hint =
-        monthSeconds === 0
-          ? "\u307e\u305a\u306f3\u5206\u30e1\u30cb\u30e5\u30fc\u304b\u3089\u8a66\u3057\u3066\u307f\u307e\u3057\u3087\u3046\u3002"
-          : monthSeconds < 600
-          ? "\u3044\u3044\u30da\u30fc\u30b9\u3067\u3059\uff01\u3082\u30461\u672c\u8efd\u3081\u306e\u30e1\u30cb\u30e5\u30fc\u3092\u8ffd\u52a0\u3057\u3066\u307f\u307e\u3059\u304b\uff1f"
-          : "\u7d20\u6674\u3089\u3057\u3044\u7d99\u7d9a\u529b\u3067\u3059\u3002\u6b21\u306f\u3069\u3093\u306a\u7df4\u7fd2\u304c\u3057\u305f\u3044\u3067\u3059\u304b\uff1f";
+      const assistantAt = new Date().toISOString();
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: hint, at: new Date().toISOString() },
+        { role: "assistant", text: "", at: assistantAt },
       ]);
+
+      const updateAssistant = (text: string) => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.at === assistantAt ? { ...msg, text } : msg
+          )
+        );
+      };
+
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let assistantText = "";
+      let latestConversationId: string | null = conversationId ?? null;
+      let receivedContent = false;
+      let streamError: string | null = null;
+
+      const applyAnswer = (value: unknown, replace = false) => {
+        if (typeof value !== "string" || value.length === 0) return;
+        receivedContent = true;
+        assistantText = replace ? value : assistantText + value;
+        updateAssistant(assistantText);
+      };
+
+      const handlePayload = (payload: any, eventName: string | null) => {
+        if (!payload || typeof payload !== "object") return;
+
+        const candidate =
+          typeof payload.conversation_id === "string"
+            ? payload.conversation_id
+            : typeof payload.conversationId === "string"
+            ? payload.conversationId
+            : null;
+        if (candidate) {
+          latestConversationId = candidate;
+        }
+
+        if (payload.error) {
+          streamError =
+            typeof payload.error === "string"
+              ? payload.error
+              : TEXT.sendError;
+          updateAssistant(streamError);
+          receivedContent = true;
+          return;
+        }
+
+        const payloadEvent =
+          typeof payload.event === "string" ? payload.event : eventName;
+        if (payloadEvent === "error") {
+          streamError =
+            typeof payload.message === "string"
+              ? payload.message
+              : TEXT.sendError;
+          updateAssistant(streamError);
+          receivedContent = true;
+          return;
+        }
+
+        if (typeof payload.output_text === "string") {
+          applyAnswer(payload.output_text, true);
+          return;
+        }
+
+        if (Array.isArray(payload.outputs)) {
+          const textOutput = payload.outputs
+            .map((item: any) => {
+              if (item && typeof item === "object") {
+                if (typeof item.answer === "string") return item.answer;
+                if (typeof item.text === "string") return item.text;
+                if (typeof item.value === "string") return item.value;
+              }
+              return "";
+            })
+            .filter(Boolean)
+            .join("");
+          if (textOutput) {
+            applyAnswer(textOutput, true);
+            return;
+          }
+        }
+
+        if (typeof payload.answer === "string") {
+          const replace = payloadEvent === "message_end";
+          applyAnswer(payload.answer, replace);
+          return;
+        }
+
+        if (typeof payload.message === "string") {
+          applyAnswer(payload.message, payloadEvent === "message_end");
+        }
+      };
+
+  
+
+
+    const processBuffer = () => {
+      buffer = buffer.replace(new RegExp('\\r', 'g'), '');
+      let index: number;
+      while ((index = buffer.indexOf('\n\n')) !== -1) {
+        const eventChunk = buffer.slice(0, index);
+        buffer = buffer.slice(index + 2);
+        if (!eventChunk.trim()) continue;
+        const lines = eventChunk.split('\n');
+        let eventName: string | null = null;
+        const dataParts: string[] = [];
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line) continue;
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim() || null;
+            continue;
+          }
+          if (line.startsWith('data:')) {
+            dataParts.push(line.slice(5).trim());
+          }
+        }
+        for (const part of dataParts) {
+          if (!part || part === '[DONE]') continue;
+          try {
+            const payload = JSON.parse(part);
+            handlePayload(payload, eventName);
+          } catch {
+            // ignore malformed chunk
+          }
+        }
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      processBuffer();
+    }
+    buffer += decoder.decode();
+    processBuffer();
+
+      if (streamError) {
+        updateAssistant(streamError);
+      } else if (!receivedContent) {
+        const hint =
+          monthSeconds === 0
+            ? "まずは3分メニューから試してみましょう。"
+            : monthSeconds < 600
+            ? "いいペースです！もう1本軽めのメニューを追加してみますか？"
+            : "素晴らしい継続力です。次はどんな練習がしたいですか？";
+        updateAssistant(hint);
+      } else if (!assistantText.trim()) {
+        updateAssistant(TEXT.sendError);
+      }
+
+      if (latestConversationId && latestConversationId !== conversationId) {
+        persistConversationId(latestConversationId);
+      }
     } catch (err) {
       console.error("chat send error", err);
       setMessages((prev) => [
@@ -231,7 +432,6 @@ export default function ChatWidget() {
       setSending(false);
     }
   }
-
   function renderPanelContent() {
     if (!user) {
       return (
@@ -270,10 +470,15 @@ export default function ChatWidget() {
         )}
         <div className="chat-widget__messages">
           {messages.map((msg, idx) => (
+
             <div key={idx} className={`chat-widget__bubble chat-widget__bubble--${msg.role}`}>
-              {msg.text}
+
+              {renderMessageText(msg.text)}
+
             </div>
+
           ))}
+
           {overallLoading && (
             <div className="chat-widget__bubble chat-widget__bubble--assistant">
               {TEXT.loading}
@@ -317,3 +522,4 @@ export default function ChatWidget() {
     </div>
   );
 }
+

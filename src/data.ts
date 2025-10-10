@@ -2,13 +2,9 @@
 import { Frame, Pose, PoseBlueprint, Sequence, Step, LangText } from "./types";
 
 type PoseLibrary = Record<string, PoseBlueprint>;
-
 type SequenceStepInput =
   | string
-  | {
-      pose: string;
-      frames?: Frame[];
-    };
+  | { pose: string; frames?: Frame[] };
 
 type SequenceDefinition = {
   slug: string;
@@ -16,72 +12,242 @@ type SequenceDefinition = {
   level: 1 | 2 | 3;
   tags?: string[];
   steps: SequenceStepInput[];
+  thumbnailUrl?: string;
   durationSec?: number;
 };
 
 const poseLibrary: PoseLibrary = {
-  breath: {
-    slug: "breath",
-    name: { ja: "呼吸調整" },
-    cues: [{ ja: "鼻から吸う" }, { ja: "長く吐く" }],
-    imageUrl: "https://via.placeholder.com/400x300?text=Breath",
-    frames: [
-      { seconds: 60, imageUrl: "/img/breath-1.png", text: { ja: "背筋を伸ばしながら鼻から吸う" } },
-      { seconds: 60, imageUrl: "/img/breath-2.png", text: { ja: "肩の力を抜いてゆっくり吐く" } },
-    ],
-  },
-  "cat-cow": {
-    slug: "cat-cow",
-    name: { ja: "キャット＆カウ" },
-    cues: [{ ja: "丸める" }, { ja: "反らす" }],
-    imageUrl: "https://via.placeholder.com/400x300?text=Cat-Cow",
-    frames: [
-      { seconds: 30, imageUrl: "/img/cat.png", text: { ja: "息を吐きながら背中を丸める" } },
-      { seconds: 30, imageUrl: "/img/cow.png", text: { ja: "息を吸って胸を開く" } },
-    ],
-  },
   child: {
     slug: "child",
     name: { ja: "チャイルドポーズ" },
-    cues: [{ ja: "腰を引く" }, { ja: "呼吸を深く" }],
-    imageUrl: "https://via.placeholder.com/400x300?text=Child",
+    cues: [],
+    imageUrl: "/pose/child.png",
+    frames: [{ seconds: 30, imageUrl: "/pose/child.png", text: { ja: "リラックスしてキープ" } }],
+    level: 1,
+    areas: ["背中",],
+    tags: ["リラックス"],
+  },
+
+  "cat-cow": {
+    slug: "cat-cow",
+    name: { ja: "キャット＆カウ" },
+    cues: [{ ja: "息を吸いながら背中をそらす" }, { ja: "息を吐きながら背中を丸める" }],
+    imageUrl: "/pose/cat-pose.png",
+    frames: [{ seconds: 60, imageUrl: "/pose/cat-pose.png", text: { ja: "1,2を繰り返す" } }],
+    level: 1,
+    areas: ["背中",],
+    tags: ["モビリティ"],
+  },
+
+  "down-dog": {
+    slug: "down-dog",
+    name: { ja: "ダウンドッグ" },
+    cues: [],
+    imageUrl: "/pose/down-dog.jpg",
+    frames: [{ seconds: 60, imageUrl: "/pose/down-dog.jpg", text: { ja: "全身で床を押す" } }],
+    level: 2,
+    areas: ["背中", "脚", "腹"],
+    tags: ["全身"],
+  },
+
+  "seated-side-bend": {
+    slug: "seated-side-bend",
+    name: { ja: "座位体側伸ばし" },
+    cues: [],
+    imageUrl: "/pose/seated-side-bend-right.jpg",
     frames: [
-      { seconds: 60, imageUrl: "/img/child-1.png", text: { ja: "お尻をかかとに乗せ背中を広げる" } },
-      { seconds: 60, imageUrl: "/img/child-2.png", text: { ja: "呼吸を深めながら力を抜く" } },
+      { seconds: 30, imageUrl: "/pose/seated-side-bend-right.jpg", text: { ja: "右へ倒す" } },
+      { seconds: 30, imageUrl: "/pose/seated-side-bend-left.jpg", text: { ja: "左へ倒す" } },
     ],
+    level: 1,
+    areas: ["肩",],
+    tags: ["ストレッチ"],
+  },
+
+  "seated-twist": {
+    slug: "seated-twist",
+    name: { ja: "座位ねじり" },
+    cues: [],
+    imageUrl: "/pose/seated-twist-right.jpg",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/seated-twist-right.jpg", text: { ja: "右へねじる" } },
+      { seconds: 30, imageUrl: "/pose/seated-twist-left.jpg", text: { ja: "左へねじる" } },
+    ],
+    level: 1,
+    areas: ["背中", "腰"],
+    tags: ["ツイスト"],
+  },
+
+  "locust-easy": {
+    slug: "locust-easy",
+    name: { ja: "バッタ（やさしい）" },
+    cues: [{ ja: "みぞおちからやさしく持ち上げる" }],
+    imageUrl: "/pose/Grasshopper.png",
+    frames: [{ seconds: 30, imageUrl: "/pose/Grasshopper.png", text: { ja: "肩すくめず首長く" } }],
+    level: 2,
+    areas: ["背中", "胸"],
+    tags: ["後屈", "背筋強化"],
+  },
+
+  malasana: {
+    slug: "malasana",
+    name: { ja: "花輪のポーズ（マラーサナ）" },
+    cues: [],
+    imageUrl: "/pose/malasana.png",
+    frames: [{ seconds: 30, imageUrl: "/pose/malasana.png", text: { ja: "自然な呼吸でキープ" } }],
+    level: 1,
+    areas: ["股関節",],
+    tags: ["ヒップオープナー"],
+  },
+
+  triangle: {
+    slug: "triangle",
+    name: { ja: "三角のポーズ（トリコナーサナ）" },
+    cues: [],
+    imageUrl: "/pose/triangle_right.png",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/triangle_right.png", text: { ja: "姿勢を保つ" } },
+      { seconds: 30, imageUrl: "/pose/triangle_left.png", text: { ja: "姿勢を保つ" } },
+    ],
+    level: 2,
+    areas: ["脚", "肩",],
+    tags: ["ストレッチ"],
+  },
+
+  inaho: {
+    slug: "inaho",
+    name: { ja: "いなほのポーズ" },
+    cues: [{ ja: "肩を落とし胸ひらく" }],
+    imageUrl: "/pose/inaho.png",
+    frames: [{ seconds: 30, imageUrl: "/pose/inaho.png", text: { ja: "自然呼吸でキープ" } }],
+    level: 1,
+    areas: ["肩", "背中", "胸"],
+    tags: ["チェアヨガ", "ストレッチ"],
+  },
+
+  "cow-face": {
+    slug: "cow-face",
+    name: { ja: "牛の顔のポーズ（腕）" },
+    cues: [{ ja: "下の肘を体側へ寄せる" }],
+    imageUrl: "/pose/cow_face_right.png",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/cow_face_right.png", text: { ja: "右腕上・左腕下" } },
+      { seconds: 30, imageUrl: "/pose/cow_face_left.png", text: { ja: "左腕上・右腕下" } },
+    ],
+    level: 2,
+    areas: ["肩", "背中", "胸"],
+    tags: ["ストレッチ", "左右あり"],
+  },
+
+  "reverse-prayer": {
+    slug: "reverse-prayer",
+    name: { ja: "リバース合掌のポーズ" },
+    cues: [{ ja: "合掌は胸の真裏" }],
+    imageUrl: "/pose/Hands_clasped.png",
+    frames: [{ seconds: 30, imageUrl: "/pose/Hands_clasped.png", text: { ja: "肩力まず胸ひらく" } }],
+    level: 2,
+    areas: ["肩","背中"],
+    tags: ["ストレッチ"],
+  },
+
+  tree: {
+    slug: "tree",
+    name: { ja: "木のポーズ（ヴリクシャーサナ）" },
+    cues: [{ ja: "軸足で床を押す" }],
+    imageUrl: "/pose/tree_right_pose.png",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/tree_right_pose.png", text: { ja: "右足軸 → 合掌" } },
+      { seconds: 30, imageUrl: "/pose/tree_left_pose.png", text: { ja: "左足軸 → 合掌" } },
+    ],
+    level: 2,
+    areas: ["脚", "股関節",],
+    tags: ["バランス", "左右あり"],
+  },
+
+  cobra: {
+    slug: "cobra",
+    name: { ja: "コブラのポーズ（ブジャンガーサナ）" },
+    cues: [{ ja: "肩を下げ首長く" }],
+    imageUrl: "/pose/cobra.png",
+    frames: [{ seconds: 30, imageUrl: "/pose/cobra.png", text: { ja: "恥骨で床を押す" } }],
+    level: 1,
+    areas: ["背中", "胸", "腰"],
+    tags: ["後屈"],
+  },
+
+  frog: {
+    slug: "frog",
+    name: { ja: "カエルのポーズ（マンドゥカーサナ）" },
+    cues: [],
+    imageUrl: "/pose/frog.png",
+    frames: [{ seconds: 30, imageUrl: "/pose/frog.png", text: { ja: "股関節をやさしく開く" } }],
+    level: 1,
+    areas: ["股関節"],
+    tags: ["ヒップオープナー"],
+  },
+
+  parivrtta_right: {
+    slug: "parivrtta_right",
+    name: { ja: "ねじったランジ（右）" },
+    cues: [],
+    imageUrl: "/pose/Parivrtta_right.jpg",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/Parivrtta_right.jpg", text: { ja: "前脚側へねじる" } },
+      { seconds: 30, imageUrl: "/pose/Parivrtta_left.jpg", text: { ja: "前脚側へねじる" } },
+    ],
+    level: 2,
+    areas: ["背中", "脚"],
+    tags: ["ツイスト", "スタンディング"],
+  },
+
+  sukhasana: {
+    slug: "sukhasana",
+    name: { ja: "安楽座（スカーサナ）" },
+    cues: [],
+    imageUrl: "/pose/Sukhasana.png",
+    frames: [{ seconds: 30, imageUrl: "/pose/Sukhasana.png", text: { ja: "自然な呼吸でキープ" } }],
+    level: 1,
+    areas: ["股関節", "背中"],
+    tags: ["座位", "リラックス"],
+  },
+
+  gate_pose_left: {
+    slug: "gate_pose_left",
+    name: { ja: "門のポーズ" },
+    cues: [],
+    imageUrl: "/pose/Gate_Pose_left.jpg",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/Gate_Pose_left.jpg", text: { ja: "左体側を伸ばす" } },
+      { seconds: 30, imageUrl: "/pose/Gate_Pose_right.jpg", text: { ja: "右体側を伸ばす" } },
+    ],
+    level: 1,
+    areas: ["腹部", "股関節"],
+    tags: ["ストレッチ", "左右あり"],
   },
 };
 
 function cloneFrames(frames: Frame[]): Frame[] {
-  return frames.map((frame) => ({
-    seconds: frame.seconds,
-    imageUrl: frame.imageUrl,
-    text: { ...frame.text },
-  }));
+  return frames.map((f) => ({ seconds: f.seconds, imageUrl: f.imageUrl, text: { ...f.text } }));
 }
 
 function buildStep(step: SequenceStepInput): Step {
   const slug = typeof step === "string" ? step : step.pose;
   const blueprint = poseLibrary[slug];
-  if (!blueprint) {
-    throw new Error(`Unknown pose slug: ${slug}`);
-  }
+  if (!blueprint) throw new Error(`Unknown pose slug: ${slug}`);
   const frames = typeof step === "string" || !step.frames ? blueprint.frames : step.frames;
-  return {
-    poseSlug: blueprint.slug,
-    frames: cloneFrames(frames),
-  };
+  return { poseSlug: blueprint.slug, frames: cloneFrames(frames) };
 }
 
 function buildSequence(def: SequenceDefinition): Sequence {
   const steps = def.steps.map(buildStep);
   const totalSeconds = steps.reduce(
-    (sum, step) => sum + step.frames.reduce((acc, frame) => acc + frame.seconds, 0),
-    0,
+    (sum, s) => sum + s.frames.reduce((acc, fr) => acc + fr.seconds, 0),
+    0
   );
   return {
     slug: def.slug,
     title: def.title,
+    thumbnailUrl: def.thumbnailUrl,
     level: def.level,
     tags: def.tags,
     steps,
@@ -91,20 +257,121 @@ function buildSequence(def: SequenceDefinition): Sequence {
 
 export const poses: Pose[] = Object.values(poseLibrary).map(({ frames, ...pose }) => pose);
 
-export const sequences: Sequence[] = [
+// ===== Sequences =====
+// 3分コース（例: 2本）
+const sequences3min: Sequence[] = [
   buildSequence({
-    slug: "morning-3min",
-    title: { ja: "朝の3分フロー" },
+    slug: "quick-mobility-3min",
+    title: { ja: "クイック・モビリティ 3分" },
+    thumbnailUrl: "/pose/cat-pose.png",
     level: 1,
-    tags: ["morning"],
-    steps: ["breath", "cat-cow"],
+    tags: ["3min", "morning", "mobility"],
+    steps: [
+      "cat-cow", // 60
+      "down-dog", // 60
+      "child", // 30
+      {
+        pose: "seated-twist", // 30（片側のみ）
+        frames: [{ seconds: 30, imageUrl: "/pose/seated-twist-right.jpg", text: { ja: "右へねじる" } }],
+      },
+    ],
   }),
   buildSequence({
-    slug: "refresh-5min",
-    title: { ja: "リフレッシュ5分" },
+    slug: "shoulder-care-3min",
+    title: { ja: "肩まわりケア 3分" },
+    thumbnailUrl: "/pose/Hands_clasped.png",
     level: 1,
-    tags: ["refresh"],
-    steps: ["breath", "child", "cat-cow"],
+    tags: ["3min", "desk"],
+    steps: [
+      "reverse-prayer", // 30
+      "cow-face", // 60
+      "inaho", // 30
+      "seated-side-bend", // 60
+    ],
   }),
 ];
 
+// 5分コース（例: 2本）
+const sequences5min: Sequence[] = [
+  buildSequence({
+    slug: "hip-open-5min",
+    title: { ja: "ヒップオープン 5分" },
+    thumbnailUrl: "/pose/malasana.png",
+    level: 1,
+    tags: ["5min", "hips"],
+    steps: [
+      {
+        pose: "malasana",
+        frames: [{ seconds: 60, imageUrl: "/pose/malasana.png", text: { ja: "自然な呼吸でキープ" } }],
+      },
+      {
+        pose: "frog",
+        frames: [{ seconds: 60, imageUrl: "/pose/frog.png", text: { ja: "股関節をやさしく開く" } }],
+      },
+      "gate_pose_left", // 60
+      "triangle", // 60
+      {
+        pose: "sukhasana",
+        frames: [{ seconds: 60, imageUrl: "/pose/Sukhasana.png", text: { ja: "座って整える" } }],
+      },
+    ],
+  }),
+  buildSequence({
+    slug: "backbend-core-5min",
+    title: { ja: "やさしい後屈・背筋 5分" },
+    thumbnailUrl: "/pose/Grasshopper.png",
+    level: 1,
+    tags: ["5min", "backbend"],
+    steps: [
+      "locust-easy", // 30
+      {
+        pose: "cobra",
+        frames: [{ seconds: 60, imageUrl: "/pose/cobra.png", text: { ja: "肩を下げ首長く" } }],
+      },
+      "down-dog", // 60
+      "tree", // 60
+      "reverse-prayer", // 30
+      "child", // 30
+    ],
+  }),
+];
+
+// 10分コース（例: 1本フルボディ）
+const sequences10min: Sequence[] = [
+  buildSequence({
+    slug: "full-body-10min",
+    title: { ja: "フルボディ 10分" },
+    thumbnailUrl: "/pose/Sukhasana.png",
+    level: 1,
+    tags: ["10min", "full"],
+    steps: [
+      "sukhasana", // 30
+      "cat-cow", // 60
+      "seated-side-bend", // 60
+      "seated-twist", // 60（左右で60）
+      "down-dog", // 60
+      "triangle", // 60
+      "parivrtta_right", // 60（左右で60）
+      "tree", // 60
+      {
+        pose: "cobra",
+        frames: [{ seconds: 60, imageUrl: "/pose/cobra.png", text: { ja: "胸をひらく" } }],
+      },
+      {
+        pose: "child",
+        frames: [{ seconds: 60, imageUrl: "/pose/child.png", text: { ja: "クールダウン" } }],
+      },
+      // 合計 570秒 → 調整で+30秒
+      {
+        pose: "locust-easy",
+        frames: [{ seconds: 30, imageUrl: "/pose/Grasshopper.png", text: { ja: "優しく背筋活性" } }],
+      },
+    ],
+  }),
+];
+
+export const sequences: Sequence[] = [
+  ...sequences3min,
+  ...sequences5min,
+  ...sequences10min,
+];

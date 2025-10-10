@@ -77,6 +77,19 @@ function isProfileSubscriptionActive(profile) {
 }
 
 
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normaliseConversationId(conversationId) {
+  if (typeof conversationId !== 'string') return null;
+  const trimmed = conversationId.trim();
+  if (!trimmed) return null;
+  if (UUID_REGEX.test(trimmed)) return trimmed;
+  return null;
+}
+
+function logConversationId() {}
+
 app.post('/api/sessions', async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -258,7 +271,6 @@ app.post('/api/subscription/cancel', async (req, res) => {
 
 app.post('/api/stripe/webhook', async (req, res) => {
   if (!stripeClient || !STRIPE_WEBHOOK_SECRET) {
-    console.warn('Stripe webhook received but Stripe is not configured');
     return res.status(200).json({ ignored: true });
   }
   const signature = req.headers['stripe-signature'];
@@ -308,7 +320,6 @@ app.post('/api/stripe/webhook', async (req, res) => {
 app.get('/api/profile', async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
-    console.debug('GET /api/profile user', user?.id);
     if (!user) {
       return res.status(401).json({ error: 'auth_required' });
     }
@@ -317,10 +328,8 @@ app.get('/api/profile', async (req, res) => {
       .select('*')
       .eq('user_id', user.id)
       .maybeSingle();
-    console.debug('GET /api/profile supabase result', { data, error });
     if (error) throw error;
     if (!data) {
-      console.debug('GET /api/profile returning 404 for user', user.id);
       return res.status(404).json({ error: 'not_found' });
     }
     return res.json(data);
@@ -418,14 +427,21 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'empty_message' });
   }
 
+  let paid = false;
+  let freeChatInfo = null;
+  let profileRecord = null;
+  const difyConversationId = normaliseConversationId(conversation_id);
+  logConversationId(conversation_id, difyConversationId);
+
   try {
-    const { data: profile, error: profileError } = await supabase
+    const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .select('subscription_status, subscription_current_period_end')
+      .select('subscription_status, subscription_current_period_end, display_name')
       .eq('user_id', uid)
       .maybeSingle();
     if (profileError) throw profileError;
-    const paid = isProfileSubscriptionActive(profile);
+    profileRecord = profileData || null;
+    paid = isProfileSubscriptionActive(profileRecord);
 
     if (!paid) {
       const adminUser = await supabase.auth.admin.getUserById(uid);
@@ -442,8 +458,9 @@ app.post('/api/chat', async (req, res) => {
         storedWeek = weekKey;
         count = 0;
       }
-      if (count >= 10) {
-        return res.status(429).json({ error: 'free_chat_limit', limit: 10 });
+      const limit = 10;
+      if (count >= limit) {
+        return res.status(429).json({ error: 'free_chat_limit', limit });
       }
       const newMetadata = Object.assign({}, metadata, {
         free_chat_week: storedWeek,
@@ -451,6 +468,12 @@ app.post('/api/chat', async (req, res) => {
       });
       const update = await supabase.auth.admin.updateUserById(uid, { user_metadata: newMetadata });
       if (update.error) throw update.error;
+      freeChatInfo = {
+        weekKey: storedWeek,
+        countBefore: count,
+        countAfter: newMetadata.free_chat_count,
+        limit,
+      };
     }
   } catch (err) {
     console.error('POST /api/chat preflight error', err);
@@ -465,10 +488,21 @@ app.post('/api/chat', async (req, res) => {
   const heartbeat = setInterval(() => res.write(': ping\n\n'), 15000);
 
   try {
-    const summary = await buildUserSummary(uid).catch(() => null);
-    const mergedInputs = Object.assign({}, inputs || {}, summary ? { user_summary: summary } : {});
+    const summary = await buildUserSummary(uid).catch((err) => {
+      return null;
+    });
 
-    const upstream = await fetch((process.env.DIFY_BASE || '') + '/v1/chat-messages', {
+    const mergedInputs = Object.assign(
+      {},
+      inputs || {},
+      {
+        user_summary: summary ? JSON.stringify(summary) : "",
+        user_display_name: profileRecord?.display_name || "",
+      }  // Difyはstring要求
+    );
+    const difyUrl = (process.env.DIFY_BASE || '') + '/v1/chat-messages';
+
+    const upstream = await fetch(difyUrl, {
       method: 'POST',
       headers: {
         Authorization: 'Bearer ' + process.env.DIFY_API_KEY,
@@ -478,23 +512,84 @@ app.post('/api/chat', async (req, res) => {
         query: trimmedMessage,
         inputs: mergedInputs,
         response_mode: 'streaming',
-        conversation_id: conversation_id || undefined,
+        conversation_id: difyConversationId || undefined,
         user: uid || conversation_id || 'anon',
       }),
     });
 
     if (!upstream.ok || !upstream.body) {
       const text = await upstream.text().catch(() => '');
+      console.error('POST /api/chat Dify upstream error', {
+        status: upstream.status,
+        hasBody: Boolean(upstream.body),
+        text,
+      });
       res.write('event: error\ndata: ' + JSON.stringify({ status: upstream.status, text }) + '\n\n');
       clearInterval(heartbeat);
       return res.end();
     }
 
-    for await (const chunk of upstream.body) res.write(chunk);
+    let chunkCount = 0;
+    const decoder = new TextDecoder();
+    let sseBuffer = '';
+    let streamingConversationId = difyConversationId || null;
+
+    const flushEventBlock = (block) => {
+      if (!block) return;
+      const lines = block.split('\n');
+      let eventName = null;
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim() || null;
+          continue;
+        }
+        if (!line.startsWith('data:')) continue;
+        const dataPart = line.slice(5).trim();
+        if (!dataPart || dataPart === '[DONE]') continue;
+        try {
+          const payload = JSON.parse(dataPart);
+          const candidate =
+            typeof payload.conversation_id === 'string'
+              ? payload.conversation_id
+              : typeof payload.conversationId === 'string'
+              ? payload.conversationId
+              : null;
+        if (candidate && UUID_REGEX.test(candidate) && candidate !== streamingConversationId) {
+          streamingConversationId = candidate;
+        }
+      } catch (parseErr) {
+        void parseErr;
+      }
+    }
+  };
+
+    for await (const chunk of upstream.body) {
+      chunkCount += 1;
+      res.write(chunk);
+      const textChunk = decoder.decode(chunk, { stream: true });
+      sseBuffer += textChunk;
+      let separatorIndex;
+      while ((separatorIndex = sseBuffer.indexOf('\n\n')) !== -1) {
+        const eventBlock = sseBuffer.slice(0, separatorIndex);
+        sseBuffer = sseBuffer.slice(separatorIndex + 2);
+        flushEventBlock(eventBlock);
+      }
+    }
+
+    if (sseBuffer.length) {
+      flushEventBlock(sseBuffer);
+      sseBuffer = '';
+    }
+
+    const remaining = decoder.decode();
+    if (remaining) flushEventBlock(remaining);
 
     clearInterval(heartbeat);
     return res.end();
   } catch (err) {
+    console.error('POST /api/chat streaming error', err);
     res.write('event: error\ndata: ' + JSON.stringify({ error: String(err) }) + '\n\n');
     clearInterval(heartbeat);
     return res.end();
@@ -503,7 +598,7 @@ app.post('/api/chat', async (req, res) => {
 
 
 const port = process.env.PORT || 8787;
-app.listen(port, () => console.log('API on', port));
+app.listen(port);
 
 
 

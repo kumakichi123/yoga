@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import OnboardingWizard from "./OnboardingWizard";
 import { useAuth, signOut } from "../hooks/useAuth";
+import { useProfile } from "../hooks/useProfile";
 
 const TEXT = {
   title: "\u4e09\u5206\u30e8\u30ac",
@@ -20,7 +21,9 @@ export default function Shell() {
   const nav = useNavigate();
   const loc = useLocation();
   const { user, loading } = useAuth();
+  const { profile, loading: profileLoading } = useProfile();
   const [signingOut, setSigningOut] = useState(false);
+  const authLoading = loading || profileLoading;
 
   const tab = loc.pathname.startsWith("/history")
     ? "history"
@@ -42,13 +45,15 @@ export default function Shell() {
   return (
     <div className="container row" style={{ paddingBottom: 80 }}>
       <OnboardingWizard />
-      <header className="shell-header">
-        <div className="shell-auth">
-          {loading ? (
+      <header className="shell-header" style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div className="shell-auth" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {authLoading ? (
             <span className="muted">{TEXT.authLoading}</span>
           ) : user ? (
             <>
-              <span className="muted">{TEXT.loggedInAs} {user.email || user.id}</span>
+              <span className="muted">
+                {TEXT.loggedInAs} {(profile?.display_name?.trim() || user.email || user.id)}
+              </span>
               <button className="btn" onClick={handleSignOut} disabled={signingOut}>
                 {signingOut ? TEXT.loggingOut : TEXT.logout}
               </button>
