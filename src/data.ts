@@ -277,15 +277,27 @@ const sequences3min: Sequence[] = [
     ],
   }),
   buildSequence({
+    slug: "chair-stretch-3min",
+    title: { ja: "チェア・ストレッチ 3分" },
+    thumbnailUrl: "/pose/inaho.png",
+    level: 1,
+    tags: ["3min", "chair", "desk"],
+    steps: [
+      { pose: "inaho", frames: [{ seconds: 30, imageUrl: "/pose/inaho.png", text: { ja: "肩を落として胸をひらく" } }] },
+      { pose: "reverse-prayer", frames: [{ seconds: 30, imageUrl: "/pose/Hands_clasped.png", text: { ja: "合掌は胸の真裏" } }] },
+      "cow-face",                 // 60
+      "seated-side-bend",         // 60（左右で計60）
+    ],
+  }),
+  buildSequence({
     slug: "shoulder-care-3min",
     title: { ja: "肩まわりケア 3分" },
-    thumbnailUrl: "/pose/Hands_clasped.png",
+    thumbnailUrl: "/pose/triangle_right.png",
     level: 1,
     tags: ["3min", "desk"],
     steps: [
-      "reverse-prayer", // 30
+      "triangle", // 30
       "cow-face", // 60
-      "inaho", // 30
       "seated-side-bend", // 60
     ],
   }),

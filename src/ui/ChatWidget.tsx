@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useProfile } from "../hooks/useProfile";
@@ -129,6 +129,45 @@ const persistConversationId = useCallback(
   }, []);
 
   const overallLoading = loading || profileLoading || statsLoading;
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const scrollToBottom = useCallback(() => {
+    const node = messagesRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    scrollToBottom();
+  }, [messages, overallLoading, scrollToBottom, open]);
+
+  const adjustTextareaSize = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const computed =
+      typeof window !== "undefined" ? window.getComputedStyle(el) : null;
+    const lineHeight = computed ? parseFloat(computed.lineHeight || "0") : 0;
+    const paddingTop = computed ? parseFloat(computed.paddingTop || "0") : 0;
+    const paddingBottom = computed
+      ? parseFloat(computed.paddingBottom || "0")
+      : 0;
+    const fallbackLineHeight = 20;
+    const maxHeight =
+      (lineHeight > 0 ? lineHeight : fallbackLineHeight) * 5 +
+      paddingTop +
+      paddingBottom;
+    const newHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${newHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    adjustTextareaSize();
+  }, [input, open, adjustTextareaSize]);
 
   const ensureDefaultMessage = useCallback(
     (streak: number, sessions: number, seconds: number) => {
@@ -468,7 +507,7 @@ const persistConversationId = useCallback(
             </button>
           </div>
         )}
-        <div className="chat-widget__messages">
+        <div className="chat-widget__messages" ref={messagesRef}>
           {messages.map((msg, idx) => (
 
             <div key={idx} className={`chat-widget__bubble chat-widget__bubble--${msg.role}`}>
@@ -486,7 +525,9 @@ const persistConversationId = useCallback(
           )}
         </div>
         <div className="chat-widget__input">
-          <input
+          <textarea
+            ref={inputRef}
+            rows={1}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder={TEXT.inputPlaceholder}

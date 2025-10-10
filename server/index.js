@@ -6,6 +6,8 @@ import cors from 'cors';
 import fetch from 'node-fetch';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { readdir } from 'fs/promises';
+import path from 'path';
 
 const app = express();
 app.use(cors());
@@ -28,6 +30,9 @@ const APP_BASE_URL =
 const stripeClient = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' })
   : null;
+
+const BGM_DIR = path.resolve(process.cwd(), 'public', 'BGM');
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.webm']);
 
 async function getUserFromRequest(req) {
   const auth = req.headers['authorization'];
@@ -89,6 +94,35 @@ function normaliseConversationId(conversationId) {
 }
 
 function logConversationId() {}
+
+app.get('/api/bgm', async (req, res) => {
+  try {
+    const entries = await readdir(BGM_DIR, { withFileTypes: true });
+    const tracks = entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .filter((name) => AUDIO_EXTENSIONS.has(path.extname(name).toLowerCase()))
+      .map((fileName) => {
+        const parsed = path.parse(fileName);
+        const humanName = parsed.name
+          .replace(/[-_]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return {
+          fileName,
+          name: humanName || parsed.name || fileName,
+          url: `/BGM/${encodeURIComponent(fileName)}`,
+        };
+      });
+    return res.json({ tracks });
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      return res.json({ tracks: [] });
+    }
+    console.error('GET /api/bgm error', err);
+    return res.status(500).json({ error: 'bgm_list_failed' });
+  }
+});
 
 app.post('/api/sessions', async (req, res) => {
   try {

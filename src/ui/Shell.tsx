@@ -51,9 +51,6 @@ export default function Shell() {
             <span className="muted">{TEXT.authLoading}</span>
           ) : user ? (
             <>
-              <span className="muted">
-                {TEXT.loggedInAs} {(profile?.display_name?.trim() || user.email || user.id)}
-              </span>
               <button className="btn" onClick={handleSignOut} disabled={signingOut}>
                 {signingOut ? TEXT.loggingOut : TEXT.logout}
               </button>
