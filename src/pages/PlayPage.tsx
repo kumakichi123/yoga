@@ -4,7 +4,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { sequences, poses } from "../data";
 import type { Frame, Sequence, Pose } from "../types";
 import { insertSession } from "../store.remote";
-import { apiUrl } from "../utils/api";
 
 /** === Inline CSS: 16:9固定＋contain === */
 const PLAY_CSS = `
@@ -49,11 +48,6 @@ body{color:var(--ink)}
 .play-timer{display:flex;flex-direction:column;align-items:center;gap:4px}
 .play-timer .muted{font-size:12px;color:var(--muted)}
 .play-timer .time{font-size:28px;font-weight:700}
-/* BGM selector */
-.play-bgm{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.play-bgm label{font-size:14px;color:var(--muted)}
-.play-bgm select{padding:6px 10px;border-radius:8px;border:1px solid rgba(67,42,102,.2);background:#fff;color:var(--ink);min-width:160px}
-.play-bgm__notice{font-size:12px;color:var(--muted)}
 /* 汎用ボタン */
 .btn{outline:0;border:0;cursor:pointer;user-select:none;padding:10px 14px;border-radius:12px;font-weight:600;color:#432a66;background:var(--accent-weak)}
 .btn:active{transform:translateY(1px)}
@@ -70,15 +64,11 @@ const TEXT = {
   seconds: "秒",
   next: "次へ",
   timeLabel: "時間",
-  bgmLabel: "BGM",
-  bgmNone: "なし",
-  bgmLoading: "読み込み中...",
-  bgmUnavailable: "BGMはまだ用意されていません",
-  bgmFetchError: "BGMを取得できません",
 } as const;
 
 type NextFrameInfo = { frame: Frame; pose?: Pose };
-type BgmTrack = { fileName: string; name: string; url: string };
+
+const BGM_VOLUME = 0.5;
 
 function useTicker(seconds: number, onEnd: () => void, resetKey: React.Key, initialElapsed = 0) {
   const [left, setLeft] = useState(seconds);
@@ -126,12 +116,8 @@ export default function PlayPage() {
   const [fi, setFi] = useState(0);
   const [frameInitialElapsed, setFrameInitialElapsed] = useState(0);
   const savedRef = useRef(false);
-  const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>([]);
-  const [bgmLoading, setBgmLoading] = useState(false);
-  const [bgmError, setBgmError] = useState("");
-  const [selectedBgm, setSelectedBgm] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const bgmSelectId = "play-bgm-select";
+  const audioSrcRef = useRef<string | null>(null);
 
   const stopBgm = useCallback(() => {
     const current = audioRef.current;
@@ -140,69 +126,40 @@ export default function PlayPage() {
       current.currentTime = 0;
     }
     audioRef.current = null;
+    audioSrcRef.current = null;
   }, []);
 
-  useEffect(() => {
-    let aborted = false;
-    setBgmLoading(true);
-    setBgmError("");
-    fetch(apiUrl("/api/bgm"))
-      .then((res) => {
-        if (!res.ok) throw new Error("bgm_fetch_failed");
-        return res.json();
-      })
-      .then((data) => {
-        if (aborted) return;
-        const incoming = Array.isArray(data?.tracks) ? data.tracks : [];
-        const normalized: BgmTrack[] = incoming
-          .map((raw: unknown) => {
-            if (!raw || typeof raw !== "object") return null;
-            const item = raw as Record<string, unknown>;
-            const url = typeof item.url === "string" ? item.url : null;
-            if (!url) return null;
-            const fileName = typeof item.fileName === "string" ? item.fileName : url;
-            const labelSource =
-              typeof item.name === "string" && item.name.trim().length ? item.name.trim() : fileName;
-            return { fileName, name: labelSource, url };
-          })
-          .filter((value): value is BgmTrack => Boolean(value));
-        setBgmTracks(normalized);
-      })
-      .catch((err) => {
-        if (aborted) return;
-        console.error("fetch_bgm_failed", err);
-        setBgmError(TEXT.bgmFetchError);
-        setBgmTracks([]);
-      })
-      .finally(() => {
-        if (!aborted) setBgmLoading(false);
-      });
-    return () => {
-      aborted = true;
-    };
-  }, []);
+  const resolvedBgm = useMemo(() => {
+    const value = seq?.bgm;
+    if (!value) return "";
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith("/")) return value;
+    return `/BGM/${value}`;
+  }, [seq?.bgm]);
 
   useEffect(() => {
-    setSelectedBgm("");
-    stopBgm();
-  }, [seq?.slug, stopBgm]);
-
-  useEffect(() => {
-    if (!selectedBgm) {
+    if (!resolvedBgm) {
       stopBgm();
       return;
     }
-    const resolved = selectedBgm.startsWith("http")
-      ? selectedBgm
-      : new URL(selectedBgm, window.location.origin).toString();
     let player = audioRef.current;
-    if (!player || player.src !== resolved) {
-      if (player) player.pause();
-      player = new Audio(resolved);
+    const trackChanged = audioSrcRef.current !== resolvedBgm;
+    if (!player || trackChanged) {
+      if (player) {
+        player.pause();
+      }
+      player = new Audio(resolvedBgm);
       player.loop = true;
+      player.volume = BGM_VOLUME;
       audioRef.current = player;
+      audioSrcRef.current = resolvedBgm;
+    } else if (player.volume !== BGM_VOLUME) {
+      player.volume = BGM_VOLUME;
     }
     player.loop = true;
+    if (player.volume !== BGM_VOLUME) {
+      player.volume = BGM_VOLUME;
+    }
     player.currentTime = 0;
     player.play().catch((err) => {
       console.error("bgm_play_failed", err);
@@ -210,7 +167,7 @@ export default function PlayPage() {
     return () => {
       player?.pause();
     };
-  }, [selectedBgm, stopBgm]);
+  }, [resolvedBgm, stopBgm]);
 
   useEffect(() => {
     return () => {
@@ -298,14 +255,6 @@ export default function PlayPage() {
   const pct = Math.min(100, Math.round((100 * elapsed) / seq.durationSec));
   const showNextPreview = left <= 5 && !!nextFrameInfo;
   const nextPoseName = nextFrameInfo?.pose?.name.ja ?? TEXT.nextPose;
-  const bgmStatusText = bgmError
-    ? TEXT.bgmFetchError
-    : bgmLoading
-    ? TEXT.bgmLoading
-    : bgmTracks.length === 0
-    ? TEXT.bgmUnavailable
-    : "";
-
   const handleProgressSeek = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (!seq || !seq.durationSec) return;
@@ -347,26 +296,6 @@ export default function PlayPage() {
         <div className="play-header">
           <div>{seq.title.ja}</div>
           <button className="btn" onClick={handleFinish}>{TEXT.finish}</button>
-        </div>
-
-        <div className="play-bgm">
-          <label htmlFor={bgmSelectId}>{TEXT.bgmLabel}</label>
-          <select
-            id={bgmSelectId}
-            value={selectedBgm}
-            onChange={(event) => setSelectedBgm(event.target.value)}
-            disabled={bgmLoading && bgmTracks.length === 0}
-          >
-            <option value="">{TEXT.bgmNone}</option>
-            {bgmTracks.map((track) => (
-              <option key={track.url} value={track.url}>
-                {track.name}
-              </option>
-            ))}
-          </select>
-          {bgmStatusText && (
-            <span className="play-bgm__notice" role="status">{bgmStatusText}</span>
-          )}
         </div>
 
         <div

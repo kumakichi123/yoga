@@ -33,6 +33,7 @@ export type Sequence = {
   level: 1 | 2 | 3;
   steps: Step[];
   tags?: string[];
+  bgm?: string;
 };
 
 export type ChatMsg = {

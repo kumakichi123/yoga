@@ -14,15 +14,16 @@ type SequenceDefinition = {
   steps: SequenceStepInput[];
   thumbnailUrl?: string;
   durationSec?: number;
+  bgm?: string;
 };
 
 const poseLibrary: PoseLibrary = {
   child: {
     slug: "child",
     name: { ja: "チャイルドポーズ" },
-    cues: [],
+    cues: [{ja:"リラックスしてキープ"}],
     imageUrl: "/pose/child.png",
-    frames: [{ seconds: 30, imageUrl: "/pose/child.png", text: { ja: "リラックスしてキープ" } }],
+    frames: [{ seconds: 30, imageUrl: "/pose/child.png", text: { ja: "呼吸により背面が膨らむ感覚を意識する" } }],
     level: 1,
     areas: ["背中",],
     tags: ["リラックス"],
@@ -31,9 +32,9 @@ const poseLibrary: PoseLibrary = {
   "cat-cow": {
     slug: "cat-cow",
     name: { ja: "キャット＆カウ" },
-    cues: [{ ja: "息を吸いながら背中をそらす" }, { ja: "息を吐きながら背中を丸める" }],
+    cues: [{ ja: "息を吸いながら背中をそらす" }, { ja: "1,2を繰り返す" }],
     imageUrl: "/pose/cat-pose.png",
-    frames: [{ seconds: 60, imageUrl: "/pose/cat-pose.png", text: { ja: "1,2を繰り返す" } }],
+    frames: [{ seconds: 60, imageUrl: "/pose/cat-pose.png", text: { ja: "息を吐きながら背中を丸める" } }],
     level: 1,
     areas: ["背中",],
     tags: ["モビリティ"],
@@ -42,7 +43,7 @@ const poseLibrary: PoseLibrary = {
   "down-dog": {
     slug: "down-dog",
     name: { ja: "ダウンドッグ" },
-    cues: [],
+    cues: [{ja: "しんどい場合は膝を曲げる"},],
     imageUrl: "/pose/down-dog.jpg",
     frames: [{ seconds: 60, imageUrl: "/pose/down-dog.jpg", text: { ja: "全身で床を押す" } }],
     level: 2,
@@ -92,9 +93,9 @@ const poseLibrary: PoseLibrary = {
   malasana: {
     slug: "malasana",
     name: { ja: "花輪のポーズ（マラーサナ）" },
-    cues: [],
+    cues: [{ja: "自然な呼吸でキープ"}],
     imageUrl: "/pose/malasana.png",
-    frames: [{ seconds: 30, imageUrl: "/pose/malasana.png", text: { ja: "自然な呼吸でキープ" } }],
+    frames: [{ seconds: 30, imageUrl: "/pose/malasana.png", text: { ja: "かかとを床につけ、肘で足を外側に押し広げる" } }],
     level: 1,
     areas: ["股関節",],
     tags: ["ヒップオープナー"],
@@ -203,9 +204,9 @@ const poseLibrary: PoseLibrary = {
   sukhasana: {
     slug: "sukhasana",
     name: { ja: "安楽座（スカーサナ）" },
-    cues: [],
+    cues: [{ja: "自然な呼吸でキープ"}],
     imageUrl: "/pose/Sukhasana.png",
-    frames: [{ seconds: 30, imageUrl: "/pose/Sukhasana.png", text: { ja: "自然な呼吸でキープ" } }],
+    frames: [{ seconds: 30, imageUrl: "/pose/Sukhasana.png", text: { ja: "胡坐の姿勢になり、背筋を伸ばす" } }],
     level: 1,
     areas: ["股関節", "背中"],
     tags: ["座位", "リラックス"],
@@ -252,6 +253,7 @@ function buildSequence(def: SequenceDefinition): Sequence {
     tags: def.tags,
     steps,
     durationSec: def.durationSec ?? totalSeconds,
+    bgm: def.bgm,
   };
 }
 
@@ -266,6 +268,7 @@ const sequences3min: Sequence[] = [
     thumbnailUrl: "/pose/cat-pose.png",
     level: 1,
     tags: ["3min", "morning", "mobility"],
+    bgm: "Night_Show_Case.mp3",
     steps: [
       "cat-cow", // 60
       "down-dog", // 60
@@ -282,6 +285,7 @@ const sequences3min: Sequence[] = [
     thumbnailUrl: "/pose/inaho.png",
     level: 1,
     tags: ["3min", "chair", "desk"],
+    bgm: "新緑の丘.mp3",
     steps: [
       { pose: "inaho", frames: [{ seconds: 30, imageUrl: "/pose/inaho.png", text: { ja: "肩を落として胸をひらく" } }] },
       { pose: "reverse-prayer", frames: [{ seconds: 30, imageUrl: "/pose/Hands_clasped.png", text: { ja: "合掌は胸の真裏" } }] },
@@ -295,6 +299,7 @@ const sequences3min: Sequence[] = [
     thumbnailUrl: "/pose/triangle_right.png",
     level: 1,
     tags: ["3min", "desk"],
+    bgm: "朝の訪れ.mp3",
     steps: [
       "triangle", // 30
       "cow-face", // 60
@@ -306,11 +311,30 @@ const sequences3min: Sequence[] = [
 // 5分コース（例: 2本）
 const sequences5min: Sequence[] = [
   buildSequence({
+    slug: "full-relax-5min",
+    title: { ja: "全身リラックス 5分" },
+    thumbnailUrl: "/pose/child.png",
+    level: 1,
+    tags: ["5min", "morning"],
+    bgm: "朝の訪れ.mp3",
+    durationSec: 300,
+    steps: [
+      "child",       // 30s
+      "cat-cow",     // 60s
+      "down-dog",    // 60s
+      "triangle",    // 60s (左右合わせ)
+      "malasana",    // 30s
+      "cobra",       // 30s
+      "sukhasana",   // 30s
+    ],
+  }),
+  buildSequence({
     slug: "hip-open-5min",
     title: { ja: "ヒップオープン 5分" },
     thumbnailUrl: "/pose/triangle_right.png",
     level: 1,
     tags: ["5min", "hips"],
+    bgm: "Night_Show_Case.mp3",
     steps: [
       "triangle", // 60
       {
@@ -334,6 +358,7 @@ const sequences5min: Sequence[] = [
     thumbnailUrl: "/pose/Grasshopper.png",
     level: 1,
     tags: ["5min", "backbend"],
+    bgm: "新緑の丘.mp3",
     steps: [
       "locust-easy", // 30
       {
@@ -356,6 +381,7 @@ const sequences10min: Sequence[] = [
     thumbnailUrl: "/pose/Sukhasana.png",
     level: 1,
     tags: ["10min", "full"],
+    bgm: "朝の訪れ.mp3",
     steps: [
       "sukhasana", // 30
       "cat-cow", // 60
