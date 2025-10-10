@@ -296,10 +296,15 @@ const sequences5min: Sequence[] = [
   buildSequence({
     slug: "hip-open-5min",
     title: { ja: "ヒップオープン 5分" },
-    thumbnailUrl: "/pose/malasana.png",
+    thumbnailUrl: "/pose/triangle_right.png",
     level: 1,
     tags: ["5min", "hips"],
     steps: [
+      "triangle", // 60
+      {
+        pose: "sukhasana",
+        frames: [{ seconds: 60, imageUrl: "/pose/Sukhasana.png", text: { ja: "座って整える" } }],
+      },
       {
         pose: "malasana",
         frames: [{ seconds: 60, imageUrl: "/pose/malasana.png", text: { ja: "自然な呼吸でキープ" } }],
@@ -309,11 +314,6 @@ const sequences5min: Sequence[] = [
         frames: [{ seconds: 60, imageUrl: "/pose/frog.png", text: { ja: "股関節をやさしく開く" } }],
       },
       "gate_pose_left", // 60
-      "triangle", // 60
-      {
-        pose: "sukhasana",
-        frames: [{ seconds: 60, imageUrl: "/pose/Sukhasana.png", text: { ja: "座って整える" } }],
-      },
     ],
   }),
   buildSequence({
