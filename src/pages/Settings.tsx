@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { useAuth, signOut } from "../hooks/useAuth";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 import { useProfile } from "../hooks/useProfile";
 import { isSubscriptionActive, formatSubscriptionPeriodEnd } from "../utils/subscription";
 import { upsertProfile, createStripeCheckoutSession } from "../store.remote";
 import type { ExperienceLevel } from "../types";
+import { poses } from "../data";
 
 const experienceLabels: Record<ExperienceLevel, string> = {
   beginner: "\u521d\u5fc3\u8005",
@@ -14,12 +15,16 @@ const experienceLabels: Record<ExperienceLevel, string> = {
 
 const TEXT = {
   cancelLink: "\u89e3\u7d04\u30da\u30fc\u30b8\u3078",
-  accountTitle: "\u30a2\u30ab\u30a6\u30f3\u30c8",
-  accountDescription: "\u30ed\u30b0\u30a4\u30f3\u60c5\u5831\u3068\u8868\u793a\u540d\u306f\u3001\u3053\u3053\u3067\u5909\u66f4\u3067\u304d\u307e\u3059\u3002",
-  accountFallback: "\u30d8\u30c3\u30c0\u30fc\u306e\u30ed\u30b0\u30a4\u30f3\u30dc\u30bf\u30f3\u304b\u3089\u30b5\u30a4\u30f3\u30a4\u30f3\u3067\u304d\u307e\u3059\u3002",
-  loggedInPrefix: "\u30ed\u30b0\u30a4\u30f3\u4e2d:",
-  logout: "\u30ed\u30b0\u30a2\u30a6\u30c8",
-  reading: "\u8aad\u307f\u8fbc\u307f\u4e2d...",
+  poseGalleryTitle: "\u30dd\u30fc\u30ba\u96c6",
+  poseGalleryFilterAll: "\u3059\u3079\u3066",
+  poseGalleryAreasLabel: "\u90e8\u4f4d\u3067\u7be9\u308a\u8fbc\u3080",
+  poseGalleryLevelLabel: "\u30ec\u30d9\u30eb {level}",
+  poseGalleryNoAreas: "\u5bfe\u8c61\u90e8\u4f4d\u306e\u60c5\u5831\u304c\u3042\u308a\u307e\u305b\u3093",
+  poseGalleryOpen: "\u8a73\u3057\u304f\u307f\u308b",
+  poseGalleryEmpty: "\u8868\u793a\u3067\u304d\u308b\u30dd\u30fc\u30ba\u304c\u3042\u308a\u307e\u305b\u3093\u3002",
+  poseGalleryToggleOpen: "\u958b\u304f",
+  poseGalleryToggleClose: "\u9589\u3058\u308b",
+  poseGalleryClosedHint: "\u30dc\u30bf\u30f3\u3092\u62bc\u3059\u3068\u30dd\u30fc\u30ba\u3092\u8868\u793a\u3057\u307e\u3059\u3002",
   planTitle: "\u30d7\u30e9\u30f3",
   planActive: "\u30d7\u30ec\u30df\u30a2\u30e0\u30d7\u30e9\u30f3\u3092\u3054\u5229\u7528\u4e2d\u3067\u3059",
   planActiveWithDate: "\uff08\u6b21\u56de\u66f4\u65b0: {date}\uff09",
@@ -45,9 +50,10 @@ const TEXT = {
 };
 
 export default function Settings() {
-  const { user, loading } = useAuth();
-  const { profile, loading: profileLoading, refresh: refreshProfile } = useProfile();
+  const { user } = useAuth();
+  const { profile, refresh: refreshProfile } = useProfile();
   const location = useLocation();
+  const nav = useNavigate();
 
   const [name, setName] = useState("");
   const [goal, setGoal] = useState(3);
@@ -57,10 +63,37 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [areaFilter, setAreaFilter] = useState<string>("all");
+  const [poseGalleryOpen, setPoseGalleryOpen] = useState(false);
+
+  const areaOptions = useMemo(() => {
+    const set = new Set<string>();
+    poses.forEach((pose) => {
+      (pose.areas || []).forEach((area) => {
+        const trimmed = area.trim();
+        if (trimmed) set.add(trimmed);
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ja"));
+  }, []);
+
+  const sortedPoses = useMemo(() => {
+    return poses
+      .slice()
+      .sort((a, b) => {
+        const aName = a.name.ja ?? a.name.en ?? a.slug;
+        const bName = b.name.ja ?? b.name.en ?? b.slug;
+        return aName.localeCompare(bName, "ja");
+      });
+  }, []);
+
+  const filteredPoses = useMemo(() => {
+    if (areaFilter === "all") return sortedPoses;
+    return sortedPoses.filter((pose) => (pose.areas || []).includes(areaFilter));
+  }, [areaFilter, sortedPoses]);
 
   const isPaid = isSubscriptionActive(profile);
   const periodEnd = formatSubscriptionPeriodEnd(profile);
-  const authOrProfileLoading = loading || profileLoading;
 
   useEffect(() => {
     if (!profile) {
@@ -142,19 +175,112 @@ export default function Settings() {
       )}
 
       <div className="card row">
-        <div style={{ fontWeight: 700 }}>{TEXT.accountTitle}</div>
-        <p className="muted">{TEXT.accountDescription}</p>
-        {authOrProfileLoading ? (
-          <div className="muted">{TEXT.reading}</div>
-        ) : user ? (
-          <div className="row" style={{ gap: 12 }}>
-            <div className="muted">{TEXT.loggedInPrefix} {user.email || profile?.display_name || "\u30e6\u30fc\u30b6\u30fc"}</div>
-            <button className="btn" onClick={signOut}>
-              {TEXT.logout}
-            </button>
-          </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div style={{ fontWeight: 700 }}>{TEXT.poseGalleryTitle}</div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setPoseGalleryOpen((value) => !value)}
+          >
+            {poseGalleryOpen ? TEXT.poseGalleryToggleClose : TEXT.poseGalleryToggleOpen}
+          </button>
+        </div>
+
+        {poseGalleryOpen ? (
+          <>
+            <span className="muted">{TEXT.poseGalleryAreasLabel}</span>
+            <div className="pill-group">
+              <button
+                type="button"
+                className={`pill ${areaFilter === "all" ? "active" : ""}`}
+                onClick={() => setAreaFilter("all")}
+              >
+                {TEXT.poseGalleryFilterAll}
+              </button>
+              {areaOptions.map((area) => (
+                <button
+                  type="button"
+                  key={area}
+                  className={`pill ${areaFilter === area ? "active" : ""}`}
+                  onClick={() => setAreaFilter(area)}
+                >
+                  {area}
+                </button>
+              ))}
+            </div>
+            {filteredPoses.length > 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 16,
+                  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                }}
+              >
+                {filteredPoses.map((pose) => {
+                  const poseName = pose.name.ja ?? pose.name.en ?? pose.slug;
+                  const poseAreas = pose.areas?.filter((area) => area?.trim().length) ?? [];
+                  return (
+                    <div
+                      key={pose.slug}
+                      style={{
+                        display: "grid",
+                        gap: 10,
+                        padding: 14,
+                        borderRadius: 20,
+                        border: "1px solid var(--border)",
+                        background: "var(--card-soft)",
+                      }}
+                    >
+                      <div className="thumb" style={{ margin: 0 }}>
+                        {pose.imageUrl ? (
+                          <img src={pose.imageUrl} alt={poseName} loading="lazy" />
+                        ) : (
+                          <span className="muted">{poseName}</span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 700 }}>{poseName}</div>
+                      <div className="muted">
+                        {TEXT.poseGalleryLevelLabel.replace("{level}", String(pose.level))}
+                      </div>
+                      {poseAreas.length > 0 ? (
+                        <div className="pill-group">
+                          {poseAreas.map((area) => (
+                            <span
+                              key={area}
+                              className="pill"
+                              style={{ cursor: "default" }}
+                            >
+                              {area}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="muted">{TEXT.poseGalleryNoAreas}</span>
+                      )}
+                      <button
+                        type="button"
+                        className="btn primary"
+                        onClick={() => nav(`/pose/${pose.slug}`)}
+                      >
+                        {TEXT.poseGalleryOpen}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="muted">{TEXT.poseGalleryEmpty}</div>
+            )}
+          </>
         ) : (
-          <div className="muted">{TEXT.accountFallback}</div>
+          <span className="muted">{TEXT.poseGalleryClosedHint}</span>
         )}
       </div>
 

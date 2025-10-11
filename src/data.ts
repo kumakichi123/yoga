@@ -47,7 +47,7 @@ const poseLibrary: PoseLibrary = {
     imageUrl: "/pose/down-dog.jpg",
     frames: [{ seconds: 60, imageUrl: "/pose/down-dog.jpg", text: { ja: "全身で床を押す" } }],
     level: 2,
-    areas: ["背中", "脚", "腹"],
+    areas: ["背中", "脚", "腹部"],
     tags: ["全身"],
   },
 
@@ -104,7 +104,7 @@ const poseLibrary: PoseLibrary = {
   triangle: {
     slug: "triangle",
     name: { ja: "三角のポーズ（トリコナーサナ）" },
-    cues: [],
+    cues: [{ja: "肩回りの伸びを感じよう！"}],
     imageUrl: "/pose/triangle_right.png",
     frames: [
       { seconds: 30, imageUrl: "/pose/triangle_right.png", text: { ja: "姿勢を保つ" } },
@@ -118,7 +118,7 @@ const poseLibrary: PoseLibrary = {
   inaho: {
     slug: "inaho",
     name: { ja: "いなほのポーズ" },
-    cues: [{ ja: "肩を落とし胸ひらく" }],
+    cues: [{ ja: "肩を落とし胸ひらく" },{ja: "自然呼吸でキープ"}],
     imageUrl: "/pose/inaho.png",
     frames: [{ seconds: 30, imageUrl: "/pose/inaho.png", text: { ja: "自然呼吸でキープ" } }],
     level: 1,
@@ -154,7 +154,7 @@ const poseLibrary: PoseLibrary = {
   tree: {
     slug: "tree",
     name: { ja: "木のポーズ（ヴリクシャーサナ）" },
-    cues: [{ ja: "軸足で床を押す" }],
+    cues: [{ ja: "軸足で床を押す" },{ja: "難しい場合は足の位置を下げても大丈夫です"}],
     imageUrl: "/pose/tree_right_pose.png",
     frames: [
       { seconds: 30, imageUrl: "/pose/tree_right_pose.png", text: { ja: "右足軸 → 合掌" } },
@@ -179,9 +179,9 @@ const poseLibrary: PoseLibrary = {
   frog: {
     slug: "frog",
     name: { ja: "カエルのポーズ（マンドゥカーサナ）" },
-    cues: [],
+    cues: [{ja: "つま先はできれば内側に向けるようにしましょう"}],
     imageUrl: "/pose/frog.png",
-    frames: [{ seconds: 30, imageUrl: "/pose/frog.png", text: { ja: "股関節をやさしく開く" } }],
+    frames: [{ seconds: 30, imageUrl: "/pose/frog.png", text: { ja: "股関節をやさしく開きながら態勢を低くする" } }],
     level: 1,
     areas: ["股関節"],
     tags: ["ヒップオープナー"],
@@ -215,11 +215,11 @@ const poseLibrary: PoseLibrary = {
   gate_pose_left: {
     slug: "gate_pose_left",
     name: { ja: "門のポーズ" },
-    cues: [],
+    cues: [{ja: "脇腹が伸びる感覚があれば成功です！"}],
     imageUrl: "/pose/Gate_Pose_left.jpg",
     frames: [
-      { seconds: 30, imageUrl: "/pose/Gate_Pose_left.jpg", text: { ja: "左体側を伸ばす" } },
-      { seconds: 30, imageUrl: "/pose/Gate_Pose_right.jpg", text: { ja: "右体側を伸ばす" } },
+      { seconds: 30, imageUrl: "/pose/Gate_Pose_left.jpg", text: { ja: "右膝を床につけ左手を床につける" } },
+      { seconds: 30, imageUrl: "/pose/Gate_Pose_right.jpg", text: { ja: "左膝を床につけ右手を床につける" } },
     ],
     level: 1,
     areas: ["腹部", "股関節"],
@@ -259,6 +259,10 @@ function buildSequence(def: SequenceDefinition): Sequence {
 
 export const poses: Pose[] = Object.values(poseLibrary).map(({ frames, ...pose }) => pose);
 
+export function getPoseBlueprint(slug: string): PoseBlueprint | undefined {
+  return poseLibrary[slug];
+}
+
 // ===== Sequences =====
 // 3分コース（例: 2本）
 const sequences3min: Sequence[] = [
@@ -287,8 +291,8 @@ const sequences3min: Sequence[] = [
     tags: ["3min", "chair", "desk"],
     bgm: "新緑の丘.mp3",
     steps: [
-      { pose: "inaho", frames: [{ seconds: 30, imageUrl: "/pose/inaho.png", text: { ja: "肩を落として胸をひらく" } }] },
-      { pose: "reverse-prayer", frames: [{ seconds: 30, imageUrl: "/pose/Hands_clasped.png", text: { ja: "合掌は胸の真裏" } }] },
+      { pose: "inaho", frames: [{ seconds: 30, imageUrl: "/pose/inaho.png", text: { ja: "" } }] },
+      { pose: "reverse-prayer", frames: [{ seconds: 30, imageUrl: "/pose/Hands_clasped.png", text: { ja: "" } }] },
       "cow-face",                 // 60
       "seated-side-bend",         // 60（左右で計60）
     ],

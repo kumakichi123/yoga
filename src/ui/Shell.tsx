@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import OnboardingWizard from "./OnboardingWizard";
+import PwaPrompt from "./PwaPrompt";
 import { useAuth, signOut } from "../hooks/useAuth";
 import { useProfile } from "../hooks/useProfile";
 
@@ -45,6 +46,7 @@ export default function Shell() {
   return (
     <div className="container row" style={{ paddingBottom: 80 }}>
       <OnboardingWizard />
+      <PwaPrompt />
       <header className="shell-header" style={{ display: "flex", justifyContent: "flex-end" }}>
         <div className="shell-auth" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {authLoading ? (
