@@ -10,7 +10,7 @@ export default function App(){
   const [tab,setTab]=useState<Tab>("yoga");
   return (
     <div className="container row" style={{paddingBottom:80}}>
-      <header className="row"><h1 className="h">5分ヨガ</h1></header>
+      <header className="row"><h1 className="h">ヨガAI</h1></header>
       {tab==="yoga" && <Yoga/>}
       {tab==="history" && <History/>}
       {tab==="settings" && <Settings/>}

@@ -1,4 +1,4 @@
-﻿// src/ui/Shell.tsx
+// src/ui/Shell.tsx
 import React, { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import OnboardingWizard from "./OnboardingWizard";
@@ -7,7 +7,7 @@ import { useAuth, signOut } from "../hooks/useAuth";
 import { useProfile } from "../hooks/useProfile";
 
 const TEXT = {
-  title: "\u4e09\u5206\u30e8\u30ac",
+  title: "\u30e8\u30acAI",
   login: "\u30ED\u30B0\u30A4\u30F3 / \u65B0\u898F\u767B\u9332",
   logout: "\u30ED\u30B0\u30A2\u30A6\u30C8",
   authLoading: "\u8A8D\u8A3C\u3092\u78BA\u8A8D\u4E2D...",

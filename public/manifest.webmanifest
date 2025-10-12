@@ -1,11 +1,11 @@
 {
-  "name": "\u4e09\u5206\u30e8\u30ac",
-  "short_name": "\u4e09\u5206\u30e8\u30ac",
+  "name": "\u30e8\u30acAI",
+  "short_name": "\u30e8\u30acAI",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F6F1FF",
   "theme_color": "#A855F7",
-  "description": "\u4e09\u5206\u3067\u3067\u304d\u308b\u7c21\u5358\u30e8\u30ac\u3092\u624b\u8fd1\u306a\u30ac\u30a4\u30c9\u3067\u30b5\u30dd\u30fc\u30c8\u3057\u307e\u3059\u3002",
+  "description": "\u30e8\u30acAI\u306f\u3001\u6c17\u6301\u3061\u3084\u76ee\u6a19\u306b\u5408\u308f\u305b\u3066\u69d8\u3005\u306a\u30e8\u30ac\u30eb\u30fc\u30c6\u30a3\u30f3\u3092AI\u304c\u30b5\u30dd\u30fc\u30c8\u3057\u307e\u3059\u3002",
   "icons": [
     { "src": "/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
     { "src": "/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
