@@ -225,6 +225,83 @@ const poseLibrary: PoseLibrary = {
     areas: ["腹部", "股関節"],
     tags: ["ストレッチ", "左右あり"],
   },
+  "gas-release": {
+    slug: "gas-release",
+    name: { ja: "ガス抜きのポーズ（パヴァンムクターサナ）" },
+    cues: [
+      { ja: "両膝を抱え、自然な呼吸でキープ" },
+    ],
+    imageUrl: "/pose/gas-release.png",
+    frames: [
+      { seconds: 60, imageUrl: "/pose/gas-release.png", text: { ja: "" } },
+    ],
+    level: 1,
+    areas: ["腰", "腹部",],
+    tags: ["リラックス", "消化促進", "仰向け"]
+  },
+  
+  "dolphin-plank": {
+    slug: "dolphin-plank",
+    name: { ja: "ドルフィンプランク（前腕プランク）" },
+    cues: [
+      { ja: "肘で床を押し背中を広く保つ" },
+      { ja: "体を一直線にキープ" }
+    ],
+    imageUrl: "/pose/Dolphin_Plank.jpeg",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/Dolphin_Plank.jpeg", text: { ja: "" } }
+    ],
+    level: 2,
+    areas: [ "肩", "腕", "腹部"],
+    tags: ["体幹強化", "プランク"]
+  },
+
+  "bridge": {
+    slug: "bridge",
+    name: { ja: "ブリッジのポーズ（セツバンダーサナ）" },
+    cues: [
+      { ja: "①の姿勢になり、胸はつき出す" },
+      { ja: "体を前に出したまま、片手ずつお尻から手を離し、かかとをつかんで②の姿勢になる" }
+    ],
+    imageUrl: "/pose/bridge.jpeg",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/bridge.jpeg", text: { ja: "" } }
+    ],
+    level: 2,
+    areas: ["腹部", "脚", "背中"],
+    tags: ["後屈", "リラックス"]
+  },
+  "camel": {
+    slug: "camel",
+    name: { ja: "ラクダのポーズ（ウシュトラアサナ）" },
+    cues: [
+      { ja: "腰を前に押し出し胸を開く" },
+      { ja: "首を無理に後ろへ倒さない" }
+    ],
+    imageUrl: "/pose/camel.png",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/camel.png", text: { ja: "" } }
+    ],
+    level: 2,
+    areas: ["胸", "腹部", "太もも", "肩"],
+    tags: ["後屈", "姿勢改善", "筋力強化"]
+  },
+  "upward-salute": {
+    slug: "upward-salute",
+    name: { ja: "上向きの万歳のポーズ（ウールドヴァ・ハスターサナ）" },
+    cues: [
+      { ja: "かかとをつけたまま両腕を上げる" },
+      { ja: "肩を下げて背筋を伸ばす。肩回りと背骨の伸びを感じる" }
+    ],
+    imageUrl: "/pose/upward-salute.png",
+    frames: [
+      { seconds: 30, imageUrl: "/pose/upward-salute.png", text: { ja: "" } }
+    ],
+    level: 1,
+    areas: ["肩", "背中", "腹部"],
+    tags: ["ストレッチ", "立位", "姿勢改善"]
+  },
+
 };
 
 function cloneFrames(frames: Frame[]): Frame[] {
@@ -310,6 +387,22 @@ const sequences3min: Sequence[] = [
       "seated-side-bend", // 60
     ],
   }),
+  buildSequence({
+    slug: "test",
+    title: { ja: "テストメニュー 3分" },
+    thumbnailUrl: "/pose/malasana.png",
+    level: 1,
+    tags: ["3min", "desk"],
+    bgm: "朝の訪れ.mp3",
+    steps: [
+      "gas-release", // 30
+      "dolphin-plank", // 60
+      "bridge", // 60
+      "camel",
+      "upward-salute",
+    ],
+  }),
+  
 ];
 
 // 5分コース（例: 2本）

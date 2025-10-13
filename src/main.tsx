@@ -15,6 +15,7 @@ import Privacy from "./pages/Privacy";
 import Commerce from "./pages/Commerce";
 import AuthPage from "./pages/Auth";
 import PoseDetail from "./pages/PoseDetail";
+import Contact from "./pages/Contact";
 
 ensureAnonymousId();
 
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
   { path: "/auth", element: <AuthPage/> },
   { path: "/pose/:slug", element: <PoseDetail/> },
   { path: "/play/:slug", element: <PlayPage/> },
+  { path: "/contact", element: <Contact/> },
   { path: "/legal/terms", element: <Terms/> },
   { path: "/legal/privacy", element: <Privacy/> },
   { path: "/legal/commerce", element: <Commerce/> },

@@ -12,6 +12,9 @@ type Env = {
   STRIPE_SECRET_KEY?: string;
   STRIPE_PRICE_ID?: string;
   APP_BASE_URL?: string;
+  CONTACT_EMAIL?: string;
+  CONTACT_FROM_EMAIL?: string;
+  CONTACT_FROM_NAME?: string;
 };
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -31,6 +34,18 @@ const ALLOWED_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:8787",
 ];
+
+async function fileToBase64(file: File): Promise<{ content: string; type: string; name: string }> {
+  const arrayBuffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(arrayBuffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = btoa(binary);
+  return { content: base64, type: file.type || "application/octet-stream", name: file.name || "attachment" };
+}
 
 function getCorsOrigin(request: Request) {
   const origin = request.headers.get("Origin");
@@ -454,6 +469,85 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && url.pathname === "/api/chat") {
     return handleChat(env, request);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/contact") {
+    if (!env.CONTACT_EMAIL) {
+      return errorResponse(request, 500, "contact_disabled");
+    }
+    const contentType = request.headers.get("Content-Type") || "";
+    if (!contentType.includes("multipart/form-data")) {
+      return errorResponse(request, 415, "unsupported_media_type");
+    }
+    const form = await request.formData();
+    const nameRaw = form.get("name");
+    const emailRaw = form.get("email");
+    const messageRaw = form.get("message");
+    const fileRaw = form.get("file");
+    const name = typeof nameRaw === "string" ? nameRaw.trim() : "";
+    const email = typeof emailRaw === "string" ? emailRaw.trim() : "";
+    const message = typeof messageRaw === "string" ? messageRaw.trim() : "";
+    if (!message) {
+      return errorResponse(request, 400, "message_required");
+    }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return errorResponse(request, 400, "invalid_email");
+    }
+    let attachment: { content: string; type: string; name: string } | null = null;
+    if (fileRaw instanceof File && fileRaw.size > 0) {
+      if (fileRaw.size > 5 * 1024 * 1024) {
+        return errorResponse(request, 400, "file_too_large");
+      }
+      attachment = await fileToBase64(fileRaw);
+    }
+    const subject = "ヨガAI お問い合わせ";
+    const personalization: any = {
+      to: [{ email: env.CONTACT_EMAIL }],
+    };
+    const fromEmail = env.CONTACT_FROM_EMAIL || "no-reply@yoga-ai.local";
+    const fromName = env.CONTACT_FROM_NAME || "ヨガAI";
+    const replyToEmail = email || fromEmail;
+    const replyToName = email ? name || "ユーザー" : fromName;
+    const contentLines = [
+      "新しいお問い合わせを受信しました。",
+      "",
+      `お名前: ${name || "未記入"}`,
+      `メール: ${email || "未記入"}`,
+      "",
+      "内容:",
+      message,
+    ];
+    const mailPayload: any = {
+      personalizations: [personalization],
+      from: { email: fromEmail, name: fromName },
+      reply_to: { email: replyToEmail, name: replyToName },
+      subject,
+      content: [
+        {
+          type: "text/plain; charset=utf-8",
+          value: contentLines.join("\n"),
+        },
+      ],
+    };
+    if (attachment) {
+      mailPayload.attachments = [
+        {
+          filename: attachment.name,
+          type: attachment.type,
+          content: attachment.content,
+        },
+      ];
+    }
+    const mailResponse = await fetch("https://api.mailchannels.net/tx/v1/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(mailPayload),
+    });
+    if (!mailResponse.ok) {
+      const text = await mailResponse.text();
+      return errorResponse(request, 502, "contact_failed", { text });
+    }
+    return jsonResponse(request, { ok: true });
   }
 
   return errorResponse(request, 404, "not_found");

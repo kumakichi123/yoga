@@ -47,6 +47,9 @@ const TEXT = {
   legalTerms: "\u5229\u7528\u898f\u7d04",
   legalPrivacy: "\u30d7\u30e9\u30a4\u30d0\u30b7\u30fc\u30dd\u30ea\u30b7\u30fc",
   legalCommerce: "\u7279\u5b9a\u5546\u53d6\u5f15\u6cd5\u306b\u57fa\u3065\u304f\u8868\u8a18",
+  contactCardTitle: "\u304a\u554f\u3044\u5408\u308f\u305b",
+  contactCardDescription: "\u304a\u554f\u3044\u5408\u308f\u305b\u306f\u5225\u30da\u30fc\u30b8\u304b\u3089\u53d7\u4ed8\u3051\u3066\u3044\u307e\u3059\u3002",
+  contactCardButton: "\u304a\u554f\u3044\u5408\u308f\u305b\u30d5\u30a9\u30fc\u30e0\u3078",
 };
 
 export default function Settings() {
@@ -344,10 +347,18 @@ export default function Settings() {
           <button className="btn primary" onClick={handleSave} disabled={disabled || !name.trim()}>
             {TEXT.save}
           </button>
-          {saving && <span className="muted">{TEXT.saving}</span>}
-          {message && <span style={{ color: "var(--brand-dark)" }}>{message}</span>}
-          {error && <span style={{ color: "#d53f8c" }}>{error}</span>}
-        </div>
+      {saving && <span className="muted">{TEXT.saving}</span>}
+      {message && <span style={{ color: "var(--brand-dark)" }}>{message}</span>}
+      {error && <span style={{ color: "#d53f8c" }}>{error}</span>}
+    </div>
+  </div>
+
+      <div className="card row">
+        <div style={{ fontWeight: 700 }}>{TEXT.contactCardTitle}</div>
+        <p className="muted">{TEXT.contactCardDescription}</p>
+        <Link className="btn primary" to="/contact">
+          {TEXT.contactCardButton}
+        </Link>
       </div>
 
       <div className="legal-links">
