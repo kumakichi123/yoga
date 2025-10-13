@@ -387,21 +387,7 @@ const sequences3min: Sequence[] = [
       "seated-side-bend", // 60
     ],
   }),
-  buildSequence({
-    slug: "test",
-    title: { ja: "テストメニュー 3分" },
-    thumbnailUrl: "/pose/malasana.png",
-    level: 1,
-    tags: ["3min", "desk"],
-    bgm: "朝の訪れ.mp3",
-    steps: [
-      "gas-release", // 30
-      "dolphin-plank", // 60
-      "bridge", // 60
-      "camel",
-      "upward-salute",
-    ],
-  }),
+  
   
 ];
 
