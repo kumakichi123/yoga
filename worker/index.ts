@@ -47,6 +47,15 @@ async function fileToBase64(file: File): Promise<{ content: string; type: string
   return { content: base64, type: file.type || "application/octet-stream", name: file.name || "attachment" };
 }
 
+function encodeFormBody(fields: Record<string, string | null | undefined>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined || value === null) continue;
+    params.append(key, value);
+  }
+  return params.toString();
+}
+
 function getCorsOrigin(request: Request) {
   const origin = request.headers.get("Origin");
   if (origin && ALLOWED_ORIGINS.includes(origin)) return origin;
@@ -123,6 +132,77 @@ async function getUserFromRequest(env: Env, request: Request) {
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data?.user) return null;
   return data.user;
+}
+
+async function fetchProfileRecord(supabase: SupabaseClient, userId: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(
+      "user_id, display_name, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_current_period_end"
+    )
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function upsertProfileFields(
+  supabase: SupabaseClient,
+  userId: string,
+  fields: Record<string, any>
+) {
+  const payload = { user_id: userId, ...fields };
+  const { error } = await supabase
+    .from("profiles")
+    .upsert(payload, { onConflict: "user_id" });
+  if (error) throw error;
+}
+
+async function ensureStripeCustomerId(
+  env: Env,
+  supabase: SupabaseClient,
+  user: any,
+  profile: any
+) {
+  if (profile?.stripe_customer_id) {
+    return profile.stripe_customer_id as string;
+  }
+  if (!env.STRIPE_SECRET_KEY) {
+    throw new Error("stripe_not_configured");
+  }
+  const displayName =
+    profile?.display_name ||
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    "";
+  const body = encodeFormBody({
+    email: user?.email || undefined,
+    name: displayName || undefined,
+    "metadata[user_id]": user?.id || undefined,
+  });
+  const response = await fetch("https://api.stripe.com/v1/customers", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`stripe_customer_create_failed:${text}`);
+  }
+  const data = (await response.json()) as { id?: string | null };
+  const customerId = typeof data?.id === "string" && data.id.trim().length ? data.id : null;
+  if (!customerId) {
+    throw new Error("stripe_customer_missing_id");
+  }
+  await upsertProfileFields(supabase, user.id, { stripe_customer_id: customerId });
+  return customerId;
+}
+
+function resolveAppBaseUrl(env: Env) {
+  return env.APP_BASE_URL || "https://yoga-snowy.vercel.app";
 }
 
 function getAnonymousId(request: Request, body: any) {
@@ -471,6 +551,129 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
     return handleChat(env, request);
   }
 
+  if (request.method === "POST" && url.pathname === "/api/subscription/checkout") {
+    if (!env.STRIPE_SECRET_KEY || !env.STRIPE_PRICE_ID) {
+      return errorResponse(request, 500, "stripe_not_configured");
+    }
+    const user = await getUserFromRequest(env, request);
+    if (!user) {
+      return errorResponse(request, 401, "auth_required");
+    }
+    const supabase = getSupabase(env);
+    let profile: any = null;
+    try {
+      profile = await fetchProfileRecord(supabase, user.id);
+    } catch (err) {
+      console.error("profile fetch error", err);
+      return errorResponse(request, 500, "profile_fetch_failed");
+    }
+    let customerId: string;
+    try {
+      customerId = await ensureStripeCustomerId(env, supabase, user, profile);
+    } catch (err) {
+      console.error("stripe customer error", err);
+      return errorResponse(request, 500, "stripe_customer_failed");
+    }
+    const successUrl = `${resolveAppBaseUrl(env)}/settings?upgrade=success`;
+    const cancelUrl = `${resolveAppBaseUrl(env)}/settings?upgrade=cancel`;
+    const sessionBody = encodeFormBody({
+      mode: "subscription",
+      "line_items[0][price]": env.STRIPE_PRICE_ID,
+      "line_items[0][quantity]": "1",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      customer: customerId,
+      client_reference_id: user.id,
+      "subscription_data[metadata][user_id]": user.id,
+    });
+    const checkoutResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: sessionBody,
+    });
+    if (!checkoutResponse.ok) {
+      const text = await checkoutResponse.text();
+      console.error("stripe checkout error", text);
+      return errorResponse(request, 502, "stripe_checkout_failed", { text });
+    }
+    const sessionData = (await checkoutResponse.json()) as { url?: string | null } | null;
+    const sessionUrl = typeof sessionData?.url === "string" ? sessionData.url : null;
+    if (!sessionUrl) {
+      return errorResponse(request, 500, "stripe_checkout_invalid");
+    }
+    return jsonResponse(request, { url: sessionUrl });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/subscription/cancel") {
+    if (!env.STRIPE_SECRET_KEY) {
+      return errorResponse(request, 500, "stripe_not_configured");
+    }
+    const user = await getUserFromRequest(env, request);
+    if (!user) {
+      return errorResponse(request, 401, "auth_required");
+    }
+    const supabase = getSupabase(env);
+    let profile: any = null;
+    try {
+      profile = await fetchProfileRecord(supabase, user.id);
+    } catch (err) {
+      console.error("profile fetch error", err);
+      return errorResponse(request, 500, "profile_fetch_failed");
+    }
+    const subscriptionId = profile?.stripe_subscription_id;
+    if (!subscriptionId) {
+      return errorResponse(request, 400, "no_active_subscription");
+    }
+    const cancelBody = encodeFormBody({ cancel_at_period_end: "true" });
+    const cancelResponse = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: cancelBody,
+    });
+    if (!cancelResponse.ok) {
+      const text = await cancelResponse.text();
+      console.error("stripe cancel error", text);
+      return errorResponse(request, 502, "subscription_cancel_failed", { text });
+    }
+    const subscriptionData = (await cancelResponse.json()) as {
+      id?: string | null;
+      status?: string | null;
+      cancel_at_period_end?: boolean | null;
+      current_period_end?: number | null;
+    } | null;
+    const subscriptionStatus =
+      typeof subscriptionData?.status === "string" ? subscriptionData.status : subscriptionData?.status ?? null;
+    const subscriptionCurrentPeriodEnd =
+      typeof subscriptionData?.current_period_end === "number"
+        ? new Date(subscriptionData.current_period_end * 1000).toISOString()
+        : null;
+    const subscriptionStripeId =
+      typeof subscriptionData?.id === "string" && subscriptionData.id.trim().length
+        ? subscriptionData.id
+        : subscriptionId;
+    const cancelAtPeriodEnd = Boolean(subscriptionData?.cancel_at_period_end);
+    try {
+      await upsertProfileFields(supabase, user.id, {
+        subscription_status: subscriptionStatus ?? profile?.subscription_status ?? null,
+        subscription_current_period_end: subscriptionCurrentPeriodEnd,
+        stripe_subscription_id: subscriptionStripeId,
+        subscription_provider: "stripe",
+      });
+    } catch (err) {
+      console.error("profile update error", err);
+    }
+    return jsonResponse(request, {
+      cancel_at_period_end: cancelAtPeriodEnd,
+      current_period_end: subscriptionCurrentPeriodEnd,
+    });
+  }
+
   if (request.method === "POST" && url.pathname === "/api/contact") {
     if (!env.CONTACT_EMAIL) {
       return errorResponse(request, 500, "contact_disabled");
@@ -494,11 +697,14 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
       return errorResponse(request, 400, "invalid_email");
     }
     let attachment: { content: string; type: string; name: string } | null = null;
-    if (fileRaw instanceof File && fileRaw.size > 0) {
-      if (fileRaw.size > 5 * 1024 * 1024) {
-        return errorResponse(request, 400, "file_too_large");
+    if (fileRaw && typeof fileRaw === "object" && "size" in fileRaw) {
+      const file = fileRaw as File;
+      if (file.size > 0) {
+        if (file.size > 5 * 1024 * 1024) {
+          return errorResponse(request, 400, "file_too_large");
+        }
+        attachment = await fileToBase64(file);
       }
-      attachment = await fileToBase64(fileRaw);
     }
     const subject = "ヨガAI お問い合わせ";
     const personalization: any = {

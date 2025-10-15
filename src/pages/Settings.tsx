@@ -347,11 +347,11 @@ export default function Settings() {
           <button className="btn primary" onClick={handleSave} disabled={disabled || !name.trim()}>
             {TEXT.save}
           </button>
-      {saving && <span className="muted">{TEXT.saving}</span>}
-      {message && <span style={{ color: "var(--brand-dark)" }}>{message}</span>}
-      {error && <span style={{ color: "#d53f8c" }}>{error}</span>}
-    </div>
-  </div>
+          {saving && <span className="muted">{TEXT.saving}</span>}
+          {message && <span style={{ color: "var(--brand-dark)" }}>{message}</span>}
+          {error && <span style={{ color: "#d53f8c" }}>{error}</span>}
+        </div>
+      </div>
 
       <div className="card row">
         <div style={{ fontWeight: 700 }}>{TEXT.contactCardTitle}</div>
