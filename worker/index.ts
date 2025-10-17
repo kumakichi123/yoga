@@ -1,5 +1,6 @@
 /* Cloudflare Worker API entry point */
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { poseLibrary } from "../data/poses.js";
 
 type JsonPrimitive = string | number | boolean | null;
 type Json = JsonPrimitive | Json[] | { [key: string]: Json };
@@ -15,6 +16,9 @@ type Env = {
   CONTACT_EMAIL?: string;
   CONTACT_FROM_EMAIL?: string;
   CONTACT_FROM_NAME?: string;
+  CHATGPT_APP_TOKENS?: string;
+  SDK_FREE_WEEKLY_LIMIT?: string;
+  SDK_BILLING_URL?: string;
 };
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,6 +38,1115 @@ const ALLOWED_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:8787",
 ];
+
+const SDK_TOKEN_HEADER = "x-chatgpt-app-token";
+const MCP_CHANNEL = "mcp";
+const MAX_POSE_SUGGEST_DISTANCE = 4;
+const MCP_PING_INTERVAL_MS = 15000;
+const DEFAULT_FREE_LIMIT_FALLBACK = 5;
+
+const mcpServerInfo = { name: "Yoga SDK MCP Bridge", version: "0.1.0" };
+const textEncoder = new TextEncoder();
+
+const STATIC_BGM_FILES = [
+  "Night_Show_Case.mp3",
+  "We_Wish_You_a_Merry_Christmas（オルゴールVer.）.mp3",
+  "新緑の丘.mp3",
+  "朝の訪れ.mp3",
+] as const;
+
+const BGM_RELAX = "新緑の丘.mp3";
+const BGM_MORNING = "朝の訪れ.mp3";
+const BGM_UPBEAT = "Night_Show_Case.mp3";
+const BGM_HOLIDAY = "We_Wish_You_a_Merry_Christmas（オルゴールVer.）.mp3";
+
+type BgmTrack = {
+  fileName: string;
+  name: string;
+  url: string;
+};
+
+type McpSession = {
+  id: string;
+  token: string;
+  createdAt: number;
+  lastAccess: number;
+  controller: ReadableStreamDefaultController<Uint8Array>;
+  heartbeat: ReturnType<typeof setInterval> | null;
+};
+
+const POSE_SLUGS = Object.keys(poseLibrary);
+const STATIC_BGM_TRACKS: BgmTrack[] = STATIC_BGM_FILES.map((fileName) => {
+  const base = fileName.replace(/\.[^.]+$/, "");
+  const humanName = base.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  return {
+    fileName,
+    name: humanName || base || fileName,
+    url: `/BGM/${encodeURIComponent(fileName)}`,
+  };
+});
+
+let cachedTokenRaw: string | null = null;
+let cachedTokenSet: Set<string> = new Set();
+
+const mcpSessions = new Map<string, McpSession>();
+
+const mcpTools = [
+  {
+    name: "generate_menu",
+    description: "Generate and store a personalized yoga sequence for the user.",
+    input_schema: {
+      type: "object",
+      required: ["user_id", "menu"],
+      properties: {
+        user_id: {
+          type: "string",
+          description: "Supabase auth user id.",
+        },
+        menu: {
+          type: "object",
+          description: "Sequence blueprint following the same structure as /api/sdk/menus.",
+        },
+        focus_keywords: {
+          type: "array",
+          items: { type: "string" },
+        },
+        constraints: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            focus: {
+              anyOf: [
+                { type: "string" },
+                { type: "array", items: { type: "string" } },
+              ],
+            },
+            energy: { type: "string" },
+            season_hint: { type: "string" },
+            time_segment: { type: "string" },
+          },
+        },
+        free_limit: { type: "integer" },
+        request: { type: "object" },
+      },
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "get_history",
+    description: "Return monthly practice history for the user.",
+    input_schema: {
+      type: "object",
+      required: ["user_id"],
+      properties: {
+        user_id: { type: "string" },
+        month: {
+          type: "string",
+          description: "YYYY-MM format (optional).",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_profile",
+    description: "Return profile and aggregate stats for the user.",
+    input_schema: {
+      type: "object",
+      required: ["user_id"],
+      properties: {
+        user_id: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "list_bgm",
+    description: "List available background music tracks.",
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    },
+  },
+];
+
+function getEnvTokenSet(env: Env) {
+  const raw = env.CHATGPT_APP_TOKENS || "";
+  if (raw === cachedTokenRaw) {
+    return cachedTokenSet;
+  }
+  const next = new Set(
+    raw
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0),
+  );
+  cachedTokenRaw = raw;
+  cachedTokenSet = next;
+  return next;
+}
+
+function isSdkTokenValid(env: Env, token: string | null | undefined) {
+  if (!token || typeof token !== "string") return false;
+  return getEnvTokenSet(env).has(token.trim());
+}
+
+type TokenExtraction = {
+  token: string | null;
+  hasHeaderToken: boolean;
+  hasQueryToken: boolean;
+  hasBearerToken: boolean;
+};
+
+function extractSdkToken(request: Request, url: URL): TokenExtraction {
+  const headerRaw = request.headers.get(SDK_TOKEN_HEADER);
+  const headerToken =
+    typeof headerRaw === "string" && headerRaw.trim().length
+      ? headerRaw.trim()
+      : null;
+  const queryRaw = url.searchParams.get("token");
+  const queryToken =
+    typeof queryRaw === "string" && queryRaw.trim().length
+      ? queryRaw.trim()
+      : null;
+  const authHeader = request.headers.get("Authorization");
+  let bearerToken: string | null = null;
+  if (typeof authHeader === "string") {
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    if (match && match[1] && match[1].trim().length) {
+      bearerToken = match[1].trim();
+    }
+  }
+  const token = headerToken ?? queryToken ?? bearerToken ?? null;
+  return {
+    token,
+    hasHeaderToken: Boolean(headerToken),
+    hasQueryToken: Boolean(queryToken),
+    hasBearerToken: Boolean(bearerToken),
+  };
+}
+
+type AuthResult =
+  | { ok: true; token: string }
+  | { ok: false; response: Response };
+
+function authenticateSdkRequest(
+  env: Env,
+  request: Request,
+  url: URL,
+  channel: string,
+): AuthResult {
+  const extraction = extractSdkToken(request, url);
+  const token = extraction.token;
+  if (!token || !isSdkTokenValid(env, token)) {
+    console.warn("SDK token auth failed", {
+      path: url.pathname + url.search,
+      hasHeaderToken: extraction.hasHeaderToken,
+      hasQueryToken: extraction.hasQueryToken,
+      hasBearerToken: extraction.hasBearerToken,
+    });
+    return {
+      ok: false,
+      response: errorResponse(request, 401, "sdk_unauthorised"),
+    };
+  }
+  console.log("SDK token auth success", {
+    path: url.pathname + url.search,
+    channel,
+    tokenLength: token.length,
+  });
+  return { ok: true, token };
+}
+
+function getSdkFreeWeeklyLimit(env: Env): number {
+  const parsed = Number(env.SDK_FREE_WEEKLY_LIMIT);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return DEFAULT_FREE_LIMIT_FALLBACK;
+}
+
+function getBillingUrl(env: Env): string | null {
+  const explicit = (env.SDK_BILLING_URL || "").trim();
+  if (explicit) return explicit;
+  const base = (env.APP_BASE_URL || "").trim();
+  if (!base) return null;
+  return `${base.replace(/\/+$/, "")}/settings`;
+}
+
+async function listBgmTracks(_env: Env): Promise<BgmTrack[]> {
+  return STATIC_BGM_TRACKS.map((track) => ({ ...track }));
+}
+
+function cloneFrames(frames: any[] = []) {
+  return frames.map((frame) => ({
+    seconds: Number(frame.seconds) || 0,
+    imageUrl: frame.imageUrl,
+    text: { ...(frame.text || {}) },
+  }));
+}
+
+function sumFrameSeconds(frames: any[] = []) {
+  return frames.reduce(
+    (total, frame) => total + (Number(frame.seconds) || 0),
+    0,
+  );
+}
+
+function defaultPoseDuration(pose: any) {
+  const total = sumFrameSeconds(pose?.frames || []);
+  return total > 0 ? total : 30;
+}
+
+function normalisePoseSlug(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function levenshteinDistance(a: string, b: string) {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const matrix = Array.from({ length: rows }, () =>
+    new Array<number>(cols).fill(0),
+  );
+  for (let i = 0; i < rows; i += 1) matrix[i][0] = i;
+  for (let j = 0; j < cols; j += 1) matrix[0][j] = j;
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+  return matrix[rows - 1][cols - 1];
+}
+
+function resolvePoseSlug(input: string) {
+  if (!input || typeof input !== "string") return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const directSlug = trimmed.toLowerCase();
+  if (poseLibrary[directSlug]) {
+    return {
+      slug: directSlug,
+      replaced: false,
+      distance: 0,
+      original: trimmed,
+    };
+  }
+  const target = normalisePoseSlug(trimmed);
+  if (!target) return null;
+  let bestSlug: string | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const slug of POSE_SLUGS) {
+    const normalised = normalisePoseSlug(slug);
+    if (normalised === target) {
+      return { slug, replaced: true, distance: 0, original: trimmed };
+    }
+    const distance = levenshteinDistance(target, normalised);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestSlug = slug;
+    }
+  }
+  if (bestSlug && bestDistance <= MAX_POSE_SUGGEST_DISTANCE) {
+    return { slug: bestSlug, replaced: true, distance: bestDistance, original: trimmed };
+  }
+  return null;
+}
+
+function slugify(value: string, fallback = "") {
+  if (!value || typeof value !== "string") return fallback;
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+  return slug || fallback;
+}
+
+function determineTimeSegment(date = new Date()) {
+  const hour = date.getHours();
+  if (hour < 6) return "late-night";
+  if (hour < 12) return "morning";
+  if (hour < 18) return "day";
+  return "evening";
+}
+
+function suggestBgmForContext(tracks: BgmTrack[], context: Record<string, any> = {}) {
+  if (!Array.isArray(tracks) || tracks.length === 0) {
+    return { track: null, reason: "no_tracks" };
+  }
+  const byFileName = new Map(tracks.map((track) => [track.fileName, track]));
+  const preferences: string[] = [];
+  const segment = context.timeSegment || determineTimeSegment();
+  if (segment === "morning") {
+    preferences.push(BGM_MORNING);
+  } else if (segment === "evening") {
+    preferences.push(BGM_RELAX);
+  }
+  const energyHint =
+    typeof context.energy === "string" ? context.energy.toLowerCase() : "";
+  if (energyHint) {
+    if (/relax|calm|gentle|sleep|slow/.test(energyHint)) {
+      preferences.unshift(BGM_RELAX);
+    }
+    if (/focus|work|product|study/.test(energyHint)) {
+      preferences.push(BGM_UPBEAT);
+    }
+    if (/holiday|xmas|christmas/.test(energyHint)) {
+      preferences.push(BGM_HOLIDAY);
+    }
+  }
+  const focusKeywords = Array.isArray(context.focusKeywords)
+    ? context.focusKeywords
+    : [];
+  if (
+    focusKeywords.some((keyword: string) =>
+      /relax|sleep|calm|腰|肩|ストレッチ|リラックス/i.test(keyword),
+    )
+  ) {
+    preferences.push(BGM_RELAX);
+  }
+  if (
+    focusKeywords.some((keyword: string) =>
+      /energ|power|筋|core|体幹/i.test(keyword),
+    )
+  ) {
+    preferences.push(BGM_UPBEAT);
+  }
+  if (context.seasonHint === "holiday") {
+    preferences.push(BGM_HOLIDAY);
+  }
+  for (const candidate of preferences) {
+    const track = byFileName.get(candidate);
+    if (track) {
+      return { track, reason: "preference", candidate };
+    }
+  }
+  return { track: tracks[0], reason: "fallback" };
+}
+
+function extractRequestedBgm(menu: any) {
+  if (!menu) return null;
+  const candidates = [menu.bgm, menu.bgm_file, menu.bgmFile];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+async function normalizeAndStoreMenu(env: Env, options: {
+  userId: string;
+  menu: any;
+  channel: string;
+  requestMetadata?: any;
+  autoBgmMode?: "always" | "fallback" | "never";
+  autoBgmContext?: Record<string, any>;
+}) {
+  const {
+    userId,
+    menu,
+    channel,
+    requestMetadata,
+    autoBgmMode = "fallback",
+    autoBgmContext = {},
+  } = options;
+
+  if (!menu || !Array.isArray(menu.steps) || menu.steps.length === 0) {
+    throw Object.assign(new Error("missing_steps"), {
+      statusCode: 400,
+      payload: { error: "missing_steps" },
+    });
+  }
+
+  const supabase = getSupabase(env);
+  const adjustments: any[] = [];
+  const normalizedSteps: any[] = [];
+  let totalSeconds = 0;
+  let maxLevel = 1;
+  const focusCollector = new Set<string>(
+    Array.isArray(autoBgmContext.focusKeywords)
+      ? autoBgmContext.focusKeywords
+      : [],
+  );
+
+  for (const rawStep of menu.steps) {
+    const stepInput =
+      typeof rawStep === "string" ? { pose: rawStep } : rawStep || {};
+    const slugSource =
+      stepInput.pose_slug ||
+      stepInput.pose ||
+      stepInput.slug ||
+      stepInput.id ||
+      "";
+    const resolved = resolvePoseSlug(slugSource);
+    if (!resolved) {
+      throw Object.assign(new Error("unknown_pose"), {
+        statusCode: 400,
+        payload: { error: "unknown_pose", pose: slugSource },
+      });
+    }
+    if (resolved.replaced && resolved.original !== resolved.slug) {
+      adjustments.push({
+        type: "pose_replaced",
+        from: resolved.original,
+        to: resolved.slug,
+        distance: resolved.distance,
+      });
+    }
+    const blueprint = poseLibrary[resolved.slug];
+    const baseFrames = cloneFrames(blueprint.frames);
+    let frames = baseFrames;
+    let requestedDuration: number | null = null;
+    if (typeof stepInput.duration_sec === "number") {
+      requestedDuration = stepInput.duration_sec;
+    } else if (typeof stepInput.seconds === "number") {
+      requestedDuration = stepInput.seconds;
+    }
+    if (Array.isArray(stepInput.frames) && stepInput.frames.length) {
+      frames = stepInput.frames.map((frame: any, index: number) => {
+        const fallback =
+          baseFrames[index] ||
+          baseFrames[baseFrames.length - 1] || {
+            seconds: defaultPoseDuration(blueprint),
+            imageUrl: blueprint.imageUrl,
+            text: blueprint.frames[0]?.text ?? {},
+          };
+        const seconds = Number(frame.seconds) || fallback.seconds;
+        const imageUrl =
+          typeof frame.imageUrl === "string" && frame.imageUrl.trim().length
+            ? frame.imageUrl
+            : fallback.imageUrl;
+        const text =
+          frame.text && typeof frame.text === "object"
+            ? { ...fallback.text, ...frame.text }
+            : { ...fallback.text };
+        return { seconds, imageUrl, text };
+      });
+    } else if (requestedDuration && requestedDuration > 0) {
+      const baseTotal = sumFrameSeconds(baseFrames);
+      if (baseTotal > 0) {
+        const ratio = requestedDuration / baseTotal;
+        frames = baseFrames.map((frame) => ({
+          ...frame,
+          seconds: Math.max(5, Math.round(frame.seconds * ratio)),
+        }));
+        const adjustment = requestedDuration - sumFrameSeconds(frames);
+        if (adjustment !== 0 && frames.length) {
+          frames[frames.length - 1].seconds += adjustment;
+        }
+      } else if (frames.length) {
+        frames[0].seconds = requestedDuration;
+      }
+    }
+
+    const stepSeconds = sumFrameSeconds(frames);
+    if (stepSeconds <= 0) {
+      throw Object.assign(new Error("invalid_step_duration"), {
+        statusCode: 400,
+        payload: { error: "invalid_step_duration", pose: resolved.slug },
+      });
+    }
+    totalSeconds += stepSeconds;
+    maxLevel = Math.max(maxLevel, blueprint.level || 1);
+    if (Array.isArray(blueprint.tags)) {
+      for (const tag of blueprint.tags) {
+        focusCollector.add(tag);
+      }
+    }
+    if (Array.isArray(blueprint.areas)) {
+      for (const area of blueprint.areas) {
+        focusCollector.add(area);
+      }
+    }
+    const note =
+      typeof stepInput.notes === "string" && stepInput.notes.trim().length
+        ? stepInput.notes.trim()
+        : null;
+    const normalized: Record<string, any> = {
+      poseSlug: blueprint.slug,
+      frames,
+    };
+    if (note) {
+      normalized.note = note;
+    }
+    normalizedSteps.push(normalized);
+  }
+
+  if (totalSeconds <= 0) {
+    throw Object.assign(new Error("invalid_sequence_duration"), {
+      statusCode: 400,
+      payload: { error: "invalid_sequence_duration" },
+    });
+  }
+
+  const tracks = await listBgmTracks(env);
+  const trackSet = new Set(tracks.map((track) => track.fileName));
+  const autoContext = {
+    ...autoBgmContext,
+    focusKeywords: Array.from(focusCollector),
+    timeSegment: autoBgmContext.timeSegment || determineTimeSegment(),
+  };
+
+  let requestedBgm = extractRequestedBgm(menu);
+  let autoBgmReason: string | null = null;
+  const forceAuto = autoBgmMode === "always";
+  const allowAuto = autoBgmMode === "always" || autoBgmMode === "fallback";
+
+  if (forceAuto || (!requestedBgm && allowAuto)) {
+    const suggestion = suggestBgmForContext(tracks, autoContext);
+    if (suggestion.track) {
+      if (requestedBgm && suggestion.track.fileName !== requestedBgm) {
+        adjustments.push({
+          type: "bgm_replaced",
+          from: requestedBgm,
+          to: suggestion.track.fileName,
+          reason: suggestion.reason,
+        });
+      } else if (!requestedBgm) {
+        adjustments.push({
+          type: "bgm_assigned",
+          to: suggestion.track.fileName,
+          reason: suggestion.reason,
+        });
+      }
+      requestedBgm = suggestion.track.fileName;
+      autoBgmReason = suggestion.reason || "suggestion";
+    }
+  }
+
+  if (requestedBgm && !trackSet.has(requestedBgm)) {
+    const fallback = tracks[0]?.fileName ?? null;
+    adjustments.push({
+      type: "bgm_invalid_replaced",
+      from: requestedBgm,
+      to: fallback,
+    });
+    requestedBgm = fallback;
+  }
+  if (!requestedBgm && tracks.length) {
+    requestedBgm = tracks[0].fileName;
+    adjustments.push({
+      type: "bgm_assigned_default",
+      to: requestedBgm,
+    });
+  }
+
+  const title =
+    typeof menu.title === "string" && menu.title.trim().length
+      ? menu.title.trim()
+      : "Custom Flow";
+  const summary =
+    typeof menu.summary === "string" && menu.summary.trim().length
+      ? menu.summary.trim()
+      : null;
+  const slugSource =
+    typeof menu.slug === "string" && menu.slug.trim().length
+      ? menu.slug
+      : title;
+  const sequenceSlug = slugify(
+    slugSource,
+    `chatgpt-${crypto.randomUUID().slice(0, 8)}`,
+  );
+  const id = crypto.randomUUID();
+  const payload = {
+    id,
+    user_id: userId,
+    source: channel,
+    slug: sequenceSlug,
+    title,
+    bgm: requestedBgm,
+    total_seconds: totalSeconds,
+    level: maxLevel,
+    steps: normalizedSteps,
+    summary,
+    metadata: {
+      request: requestMetadata ?? null,
+      adjustments,
+      raw_menu: menu,
+      bgm_auto_reason: autoBgmReason,
+      auto_context: autoContext,
+    },
+  };
+
+  const { error: insertError } = await supabase
+    .from("chatgpt_sequences")
+    .insert(payload);
+  if (insertError) {
+    throw Object.assign(insertError, {
+      statusCode: 500,
+      payload: { error: "sequence_store_failed" },
+    });
+  }
+
+  return {
+    id,
+    slug: sequenceSlug,
+    title,
+    duration_sec: totalSeconds,
+    level: maxLevel,
+    bgm: requestedBgm,
+    steps: normalizedSteps,
+    adjustments,
+    summary,
+    metadata: payload.metadata,
+  };
+}
+
+async function fetchProfileWithStats(env: Env, userId: string) {
+  const supabase = getSupabase(env);
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile) {
+    return { profile: null, stats: null };
+  }
+  const { data: sessions, error: sessionsError, count } = await supabase
+    .from("sessions")
+    .select("duration_sec,completed_at", { count: "exact" })
+    .eq("user_id", userId)
+    .order("completed_at", { ascending: false })
+    .limit(50);
+  if (sessionsError) throw sessionsError;
+  const totalSessions =
+    typeof count === "number" ? count : (sessions?.length ?? 0);
+  const totalSeconds = (sessions ?? []).reduce(
+    (acc, row) => acc + (Number(row.duration_sec) || 0),
+    0,
+  );
+  const lastSessionAt = sessions?.[0]?.completed_at ?? null;
+  return {
+    profile,
+    stats: {
+      total_sessions: totalSessions,
+      total_seconds: totalSeconds,
+      last_session_at: lastSessionAt,
+    },
+  };
+}
+
+async function fetchMonthlyHistoryData(env: Env, options: {
+  userId: string;
+  monthParam: string | null;
+}) {
+  const { userId, monthParam } = options;
+  const supabase = getSupabase(env);
+  const targetDate = monthParam ? `${monthParam}-01` : null;
+  const basis = targetDate ? new Date(`${targetDate}T00:00:00Z`) : new Date();
+  if (Number.isNaN(basis.getTime())) {
+    const error: any = new Error("invalid_month");
+    error.statusCode = 400;
+    throw error;
+  }
+  const year = basis.getUTCFullYear();
+  const monthIndex = basis.getUTCMonth();
+  const start = new Date(Date.UTC(year, monthIndex, 1));
+  const end = new Date(Date.UTC(year, monthIndex + 1, 1));
+  const monthLabel = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("completed_at,duration_sec,sequence_slug")
+    .eq("user_id", userId)
+    .gte("completed_at", start.toISOString())
+    .lt("completed_at", end.toISOString())
+    .order("completed_at", { ascending: true });
+  if (error) throw error;
+  const dayMap = new Map<
+    string,
+    { total_seconds: number; session_count: number }
+  >();
+  let totalSeconds = 0;
+  for (const row of data || []) {
+    const completed = row.completed_at ? new Date(row.completed_at) : null;
+    if (!completed) continue;
+    const dateKey = completed.toISOString().slice(0, 10);
+    const existing = dayMap.get(dateKey) || {
+      total_seconds: 0,
+      session_count: 0,
+    };
+    const duration = Number(row.duration_sec) || 0;
+    existing.total_seconds += duration;
+    existing.session_count += 1;
+    dayMap.set(dateKey, existing);
+    totalSeconds += duration;
+  }
+  const days = Array.from(dayMap.entries())
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([date, info]) => ({
+      date,
+      total_seconds: info.total_seconds,
+      session_count: info.session_count,
+    }));
+  return {
+    month: monthLabel,
+    total_seconds: totalSeconds,
+    total_sessions: days.reduce(
+      (acc, item) => acc + item.session_count,
+      0,
+    ),
+    days,
+  };
+}
+
+async function trackSdkUsageQuota(env: Env, options: {
+  userId: string;
+  paid: boolean;
+  freeLimit?: number;
+}) {
+  const { userId, paid } = options;
+  const freeLimit =
+    Number.isFinite(options.freeLimit) && options.freeLimit && options.freeLimit > 0
+      ? Number(options.freeLimit)
+      : getSdkFreeWeeklyLimit(env);
+  if (!userId) {
+    throw new Error("missing_user_id");
+  }
+  if (paid) {
+    return {
+      allowed: true,
+      usage: {
+        weekKey: startOfWeekKey(),
+        countBefore: 0,
+        countAfter: 0,
+        limit: null,
+      },
+    };
+  }
+  const supabase = getSupabase(env);
+  const limit = freeLimit > 0 ? freeLimit : getSdkFreeWeeklyLimit(env);
+  const weekKey = startOfWeekKey();
+  const { data, error } = await supabase
+    .from("sdk_usage")
+    .select("id, chat_count")
+    .eq("user_id", userId)
+    .eq("week_key", weekKey)
+    .maybeSingle();
+  if (error) throw error;
+  let count = data?.chat_count ?? 0;
+  const countBefore = count;
+  if (count >= limit) {
+    return {
+      allowed: false,
+      usage: { weekKey, countBefore, countAfter: count, limit },
+    };
+  }
+  count += 1;
+  const nowIso = new Date().toISOString();
+  if (data?.id) {
+    const { error: updateError } = await supabase
+      .from("sdk_usage")
+      .update({ chat_count: count, updated_at: nowIso })
+      .eq("id", data.id);
+    if (updateError) throw updateError;
+  } else {
+    const { error: insertError } = await supabase
+      .from("sdk_usage")
+      .insert({
+        user_id: userId,
+        week_key: weekKey,
+        chat_count: count,
+        updated_at: nowIso,
+      });
+    if (insertError) throw insertError;
+  }
+  return {
+    allowed: true,
+    usage: { weekKey, countBefore, countAfter: count, limit },
+  };
+}
+
+function cleanupMcpSession(sessionId: string) {
+  const session = mcpSessions.get(sessionId);
+  if (!session) return;
+  if (session.heartbeat) {
+    clearInterval(session.heartbeat);
+    session.heartbeat = null;
+  }
+  try {
+    session.controller.close();
+  } catch {
+    // ignore
+  }
+  mcpSessions.delete(sessionId);
+}
+
+function sendMcpEvent(
+  session: McpSession | null | undefined,
+  type: string,
+  payload: Record<string, any>,
+) {
+  if (!session) return;
+  try {
+    session.controller.enqueue(
+      textEncoder.encode(
+        `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`,
+      ),
+    );
+  } catch (err) {
+    console.error("MCP send event error", err);
+    cleanupMcpSession(session.id);
+  }
+}
+
+async function handleMcpSse(env: Env, request: Request, url: URL) {
+  const auth = authenticateSdkRequest(env, request, url, MCP_CHANNEL);
+  if (!auth.ok) return auth.response;
+  const sessionId = crypto.randomUUID();
+  const freeLimit = getSdkFreeWeeklyLimit(env);
+  const billingUrl = getBillingUrl(env);
+  const session: McpSession = {
+    id: sessionId,
+    token: auth.token,
+    createdAt: Date.now(),
+    lastAccess: Date.now(),
+    controller: null as unknown as ReadableStreamDefaultController<Uint8Array>,
+    heartbeat: null,
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      session.controller = controller;
+      mcpSessions.set(sessionId, session);
+      const handshake = {
+        session_id: sessionId,
+        protocol: "1.0",
+        server: mcpServerInfo,
+        limits: {
+          free_weekly_limit: freeLimit,
+          billing_url: billingUrl,
+        },
+        tools: mcpTools,
+      };
+      sendMcpEvent(session, "handshake", handshake);
+      sendMcpEvent(session, "ready", { message: "session_ready" });
+      session.heartbeat = setInterval(() => {
+        sendMcpEvent(session, "ping", { ts: Date.now() });
+      }, MCP_PING_INTERVAL_MS);
+    },
+    cancel() {
+      cleanupMcpSession(sessionId);
+    },
+  });
+
+  request.signal.addEventListener("abort", () => {
+    cleanupMcpSession(sessionId);
+  });
+
+  const headers = buildCorsHeaders(request, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+
+  return new Response(stream, { status: 200, headers });
+}
+
+async function handleMcpInvoke(env: Env, request: Request, url: URL) {
+  const auth = authenticateSdkRequest(env, request, url, MCP_CHANNEL);
+  if (!auth.ok) return auth.response;
+  const billingUrl = getBillingUrl(env);
+  const body = (await readJson(request)) || {};
+  const sessionId = body.session_id || body.sessionId;
+  if (!sessionId || typeof sessionId !== "string") {
+    return errorResponse(request, 400, "missing_session_id");
+  }
+  const session = mcpSessions.get(sessionId);
+  if (!session) {
+    return errorResponse(request, 404, "session_not_found");
+  }
+  if (session.token !== auth.token) {
+    return errorResponse(request, 403, "session_token_mismatch");
+  }
+  session.lastAccess = Date.now();
+  const tool = body.tool || body.name;
+  if (!tool || typeof tool !== "string") {
+    return errorResponse(request, 400, "missing_tool");
+  }
+  const requestId = body.request_id || body.requestId || null;
+  const args = body.arguments ?? body.args ?? {};
+  let result: Record<string, any>;
+  try {
+    if (tool === "generate_menu") {
+      const userId =
+        typeof args.user_id === "string" && args.user_id.trim().length
+          ? args.user_id.trim()
+          : null;
+      if (!userId) {
+        const err: any = new Error("missing_user_id");
+        err.statusCode = 400;
+        err.payload = { error: "missing_user_id" };
+        throw err;
+      }
+      const menu = args.menu;
+      if (!menu || typeof menu !== "object") {
+        const err: any = new Error("missing_menu");
+        err.statusCode = 400;
+        err.payload = { error: "missing_menu" };
+        throw err;
+      }
+      const constraints =
+        args.constraints && typeof args.constraints === "object"
+          ? args.constraints
+          : {};
+      const focusSet = new Set<string>();
+      const collectFocus = (value: unknown) => {
+        if (!value) return;
+        if (Array.isArray(value)) {
+          value
+            .map((item) =>
+              typeof item === "string" ? item.trim() : "",
+            )
+            .filter(Boolean)
+            .forEach((entry) => focusSet.add(entry));
+        } else if (typeof value === "string" && value.trim().length) {
+          value
+            .split(/[\s,\u3001]+/)
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+            .forEach((entry) => focusSet.add(entry));
+        }
+      };
+      collectFocus(args.focus_keywords);
+      collectFocus(args.focusKeywords);
+      collectFocus(constraints.focus);
+      if (Array.isArray(menu.tags)) collectFocus(menu.tags);
+      if (Array.isArray(menu.focus)) collectFocus(menu.focus);
+
+      const profileResult = await fetchProfileWithStats(env, userId);
+      const profileRecord = profileResult.profile || null;
+      const paid = isProfileSubscriptionActive(profileRecord);
+      const usage = await trackSdkUsageQuota(env, {
+        userId,
+        paid,
+        freeLimit:
+          typeof args.free_limit === "number" ? args.free_limit : undefined,
+      });
+      if (!usage.allowed) {
+        const limit = usage.usage.limit;
+        const message = limit
+          ? `Free plan allows up to ${limit} chats per week. Please consider upgrading to continue.`
+          : "Free plan usage limit reached. Please consider upgrading to continue.";
+        const err: any = new Error("payment_required");
+        err.statusCode = 402;
+        err.payload = {
+          error: "payment_required",
+          message,
+          usage: usage.usage,
+          billing_url: billingUrl || getBillingUrl(env),
+          paid,
+        };
+        throw err;
+      }
+
+      const autoBgmContext = {
+        focusKeywords: Array.from(focusSet),
+        energy: constraints.energy || args.energy,
+        seasonHint: constraints.season_hint || args.season_hint,
+        timeSegment: args.time_segment || constraints.time_segment,
+      };
+
+      const sequence = await normalizeAndStoreMenu(env, {
+        userId,
+        menu,
+        channel: MCP_CHANNEL,
+        requestMetadata: args.request ?? null,
+        autoBgmMode: "always",
+        autoBgmContext,
+      });
+
+      result = {
+        sequence,
+        usage: usage.usage,
+        paid,
+        profile: profileRecord,
+        stats: profileResult.stats,
+      };
+    } else if (tool === "get_history") {
+      const userId =
+        typeof args.user_id === "string" && args.user_id.trim().length
+          ? args.user_id.trim()
+          : null;
+      if (!userId) {
+        const err: any = new Error("missing_user_id");
+        err.statusCode = 400;
+        err.payload = { error: "missing_user_id" };
+        throw err;
+      }
+      const monthParam =
+        typeof args.month === "string" && args.month.trim().length
+          ? args.month.trim()
+          : null;
+      const history = await fetchMonthlyHistoryData(env, {
+        userId,
+        monthParam,
+      });
+      result = { history };
+    } else if (tool === "get_profile") {
+      const userId =
+        typeof args.user_id === "string" && args.user_id.trim().length
+          ? args.user_id.trim()
+          : null;
+      if (!userId) {
+        const err: any = new Error("missing_user_id");
+        err.statusCode = 400;
+        err.payload = { error: "missing_user_id" };
+        throw err;
+      }
+      const { profile, stats } = await fetchProfileWithStats(env, userId);
+      if (!profile) {
+        const err: any = new Error("profile_not_found");
+        err.statusCode = 404;
+        err.payload = { error: "profile_not_found" };
+        throw err;
+      }
+      result = {
+        profile,
+        stats,
+        paid: isProfileSubscriptionActive(profile),
+      };
+    } else if (tool === "list_bgm") {
+      const tracks = await listBgmTracks(env);
+      result = { tracks };
+    } else {
+      return errorResponse(request, 400, "unknown_tool");
+    }
+  } catch (err: any) {
+    console.error("POST /api/mcp/invoke error", err);
+    const status =
+      typeof err?.statusCode === "number"
+        ? err.statusCode
+        : err?.payload
+        ? 400
+        : 500;
+    const payload =
+      err?.payload ||
+      ({
+        error: "mcp_invoke_failed",
+        message: err?.message || "invoke_failed",
+      } as Record<string, any>);
+    sendMcpEvent(session, "tool_error", {
+      request_id: requestId,
+      tool,
+      error: payload.error || "mcp_invoke_failed",
+      details: payload,
+    });
+    return jsonResponse(request, payload, { status });
+  }
+
+  const responsePayload = { request_id: requestId, tool, result };
+  sendMcpEvent(session, "tool_result", responsePayload);
+  return jsonResponse(request, { ok: true, result });
+}
 
 async function fileToBase64(file: File): Promise<{ content: string; type: string; name: string }> {
   const arrayBuffer = await file.arrayBuffer();
@@ -420,6 +1533,14 @@ async function handleFetch(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "OPTIONS") {
     return handleCorsPreflight(request);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/mcp/sse") {
+    return handleMcpSse(env, request, url);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/mcp/invoke") {
+    return handleMcpInvoke(env, request, url);
   }
 
   const supabase = getSupabase(env);
