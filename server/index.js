@@ -1111,6 +1111,7 @@ mcpRouter.get('/sse', (req, res) => {
     session_id: sessionId,
     protocol: '1.0',
     server: mcpServerInfo,
+    capabilities: {},
     limits: {
       free_weekly_limit: DEFAULT_SDK_FREE_LIMIT,
       billing_url: SDK_BILLING_URL || null,

@@ -37,6 +37,8 @@ const ALLOWED_ORIGINS = [
   "https://yoga-snowy.vercel.app",
   "http://localhost:5173",
   "http://127.0.0.1:8787",
+  "https://chat.openai.com",
+  "https://chatgpt.com",
 ];
 
 const SDK_TOKEN_HEADER = "x-chatgpt-app-token";
@@ -917,15 +919,16 @@ async function handleMcpSse(env: Env, request: Request, url: URL) {
     start(controller) {
       session.controller = controller;
       mcpSessions.set(sessionId, session);
-      const handshake = {
-        session_id: sessionId,
-        protocol: "1.0",
-        server: mcpServerInfo,
-        limits: {
-          free_weekly_limit: freeLimit,
-          billing_url: billingUrl,
-        },
-        tools: mcpTools,
+  const handshake = {
+    session_id: sessionId,
+    protocol: "1.0",
+    server: mcpServerInfo,
+    capabilities: {},
+    limits: {
+      free_weekly_limit: freeLimit,
+      billing_url: billingUrl,
+    },
+    tools: mcpTools,
       };
       sendMcpEvent(session, "handshake", handshake);
       sendMcpEvent(session, "ready", { message: "session_ready" });
@@ -1192,7 +1195,7 @@ function handleCorsPreflight(request: Request) {
   }
   const headers = buildCorsHeaders(request, {
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization,Content-Type,X-Anonymous-Id",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type,X-Anonymous-Id,X-ChatGPT-App-Token,X-Chat-Channel",
     "Access-Control-Max-Age": "86400",
   });
   return new Response(null, { status: 204, headers });
