@@ -252,8 +252,8 @@ export const poseLibrary = {
     areas: ["腹部", "脚", "背中"],
     tags: ["後屈", "リラックス"]
   },
-  "camel": {  //21
-    slug: "camel",
+  "bow": {  //21
+    slug: "bow",
     name: { ja: "弓のポーズ（ウシュトラアサナ）" },
     cues: [
       { ja: "腰を前に押し出し胸を開く" },
