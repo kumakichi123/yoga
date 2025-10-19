@@ -28,7 +28,7 @@ export type Step = {
 export type Sequence = {
   slug: string;
   title: LangText;
-  thumbnailUrl?: string;
+  description?: LangText;
   durationSec: number;
   level: 1 | 2 | 3;
   steps: Step[];

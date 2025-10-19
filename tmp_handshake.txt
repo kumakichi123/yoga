@@ -1,0 +1,6 @@
+event: handshake
+data: {"session_id":"71e8177b-6336-4a1d-b56e-09270929d86b","protocol_version":"1.0","server":{"name":"Yoga SDK MCP Bridge","version":"0.1.0"},"capabilities":{"tools":{},"resources":{},"prompts":{},"sampling":{}},"session":{"id":"71e8177b-6336-4a1d-b56e-09270929d86b"},"limits":{"free_weekly_limit":10,"billing_url":null},"tools":[{"name":"get_history","description":"Return monthly practice history for the user.","input_schema":{"type":"object","required":["user_id"],"properties":{"user_id":{"type":"string"},"month":{"type":"string","description":"YYYY-MM format (optional)."}},"additionalProperties":false}},{"name":"get_profile","description":"Return profile and aggregate stats for the user.","input_schema":{"type":"object","required":["user_id"],"properties":{"user_id":{"type":"string"}},"additionalProperties":false}},{"name":"list_bgm","description":"List available background music tracks.","input_schema":{"type":"object","additionalProperties":false,"properties":{}}}]}
+
+event: ready
+data: {"message":"session_ready"}
+

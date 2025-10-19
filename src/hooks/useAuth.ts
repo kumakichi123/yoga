@@ -41,3 +41,30 @@ export async function signUpPassword(email: string, password: string){
   });
   if (error) throw error;
 }
+
+export async function signInWithGoogle(redirectPath?: string) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  let redirectTo = origin;
+  if (origin && redirectPath) {
+    try {
+      const resolved = new URL(redirectPath, origin);
+      if (resolved.origin === origin) {
+        redirectTo = resolved.toString();
+      }
+    } catch (_err) {
+      redirectTo = origin;
+    }
+  }
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: origin
+      ? {
+          redirectTo,
+        }
+      : undefined,
+  });
+  if (error) throw error;
+  if (data?.url) {
+    window.location.href = data.url;
+  }
+}

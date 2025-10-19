@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useProfile } from "../hooks/useProfile";
-import { isSubscriptionActive, formatSubscriptionPeriodEnd } from "../utils/subscription";
+import { isSubscriptionActive } from "../utils/subscription";
 import { upsertProfile, createStripeCheckoutSession } from "../store.remote";
 import type { ExperienceLevel } from "../types";
 import { poses } from "../data";
@@ -17,23 +17,18 @@ const TEXT = {
   cancelLink: "\u89e3\u7d04\u30da\u30fc\u30b8\u3078",
   poseGalleryTitle: "\u30dd\u30fc\u30ba\u96c6",
   poseGalleryFilterAll: "\u3059\u3079\u3066",
-  poseGalleryAreasLabel: "\u90e8\u4f4d\u3067\u7be9\u308a\u8fbc\u3080",
+  poseGalleryAreasLabel: "\u90e8\u4f4d\u3067\u7d5e\u308a\u8fbc\u3080",
   poseGalleryLevelLabel: "\u30ec\u30d9\u30eb {level}",
   poseGalleryNoAreas: "\u5bfe\u8c61\u90e8\u4f4d\u306e\u60c5\u5831\u304c\u3042\u308a\u307e\u305b\u3093",
   poseGalleryOpen: "\u8a73\u3057\u304f\u307f\u308b",
   poseGalleryEmpty: "\u8868\u793a\u3067\u304d\u308b\u30dd\u30fc\u30ba\u304c\u3042\u308a\u307e\u305b\u3093\u3002",
   poseGalleryToggleOpen: "\u958b\u304f",
   poseGalleryToggleClose: "\u9589\u3058\u308b",
-  poseGalleryClosedHint: "\u30dc\u30bf\u30f3\u3092\u62bc\u3059\u3068\u30dd\u30fc\u30ba\u3092\u8868\u793a\u3057\u307e\u3059\u3002",
   planTitle: "\u30d7\u30e9\u30f3",
-  planActive: "\u30d7\u30ec\u30df\u30a2\u30e0\u30d7\u30e9\u30f3\u3092\u3054\u5229\u7528\u4e2d\u3067\u3059",
-  planActiveWithDate: "\uff08\u6b21\u56de\u66f4\u65b0: {date}\uff09",
-  planFree: "\u73fe\u5728\u306f\u7121\u6599\u30d7\u30e9\u30f3\u3067\u3059\u3002AI\u30c1\u30e3\u30c3\u30c8\u306f\u903110\u901a\u307e\u3067\u3054\u5229\u7528\u3044\u305f\u3060\u3051\u307e\u3059\u3002\u5c65\u6b74\u306e\u8a73\u7d30\u306f\u30d7\u30ec\u30df\u30a2\u30e0\u30d7\u30e9\u30f3\uff08\u6708\u984d580\u5186\uff09\u3067\u3054\u5229\u7528\u3044\u305f\u3060\u3051\u307e\u3059\u3002",
   upgrade: "\u30a2\u30c3\u30d7\u30b0\u30ec\u30fc\u30c9",
   upgradeLoading: "\u30ea\u30c0\u30a4\u30ec\u30af\u30c8\u4e2d...",
   upgradeError: "\u6c7a\u6e08\u30da\u30fc\u30b8\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u6642\u9593\u3092\u7f6e\u3044\u3066\u304b\u3089\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002",
   profileTitle: "\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb",
-  profileHint: "\u30ed\u30b0\u30a4\u30f3\u5f8c\u306b\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb\u3092\u66f4\u65b0\u3067\u304d\u307e\u3059\u3002",
   nameLabel: "\u8868\u793a\u540d",
   namePlaceholder: "\u30cb\u30c3\u30af\u30cd\u30fc\u30e0",
   goalLabel: "\u9031\u9593\u306e\u76ee\u6a19\u56de\u6570",
@@ -48,7 +43,6 @@ const TEXT = {
   legalPrivacy: "\u30d7\u30e9\u30a4\u30d0\u30b7\u30fc\u30dd\u30ea\u30b7\u30fc",
   legalCommerce: "\u7279\u5b9a\u5546\u53d6\u5f15\u6cd5\u306b\u57fa\u3065\u304f\u8868\u8a18",
   contactCardTitle: "\u304a\u554f\u3044\u5408\u308f\u305b",
-  contactCardDescription: "\u304a\u554f\u3044\u5408\u308f\u305b\u306f\u5225\u30da\u30fc\u30b8\u304b\u3089\u53d7\u4ed8\u3051\u3066\u3044\u307e\u3059\u3002",
   contactCardButton: "\u304a\u554f\u3044\u5408\u308f\u305b\u30d5\u30a9\u30fc\u30e0\u3078",
 };
 
@@ -96,7 +90,7 @@ export default function Settings() {
   }, [areaFilter, sortedPoses]);
 
   const isPaid = isSubscriptionActive(profile);
-  const periodEnd = formatSubscriptionPeriodEnd(profile);
+  const canAccessPoseGallery = Boolean(user && isPaid);
 
   useEffect(() => {
     if (!profile) {
@@ -163,14 +157,26 @@ export default function Settings() {
     }
   }
 
+  function handlePoseGalleryToggle() {
+    if (canAccessPoseGallery) {
+      setPoseGalleryOpen((value) => !value);
+      return;
+    }
+    if (!user) {
+      nav("/auth?mode=signup&redirect=/settings");
+      return;
+    }
+    if (!checkoutLoading) {
+      void handleUpgrade();
+    }
+  }
+
   const experienceOptions: ExperienceLevel[] = ["beginner", "intermediate", "advanced"];
   const disabled = !user || saving;
-  const planLine = isPaid
-    ? `${TEXT.planActive}${periodEnd ? TEXT.planActiveWithDate.replace('{date}', periodEnd) : ''}\u3002`
-    : TEXT.planFree;
+  const planLabel = isPaid ? "\u30d7\u30ec\u30df\u30a2\u30e0" : "\u7121\u6599";
 
   return (
-    <div className="row">
+    <div className="row settings-page">
       {upgradeBanner && (
         <div className="card" style={{ background: "#F1EAFE" }}>
           <span>{upgradeBanner}</span>
@@ -178,46 +184,53 @@ export default function Settings() {
       )}
 
       <div className="card row">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div style={{ fontWeight: 700 }}>{TEXT.poseGalleryTitle}</div>
-          <button
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+        <div style={{ fontWeight: 700 }}>{TEXT.poseGalleryTitle}</div>
+        <button
             type="button"
             className="btn"
-            onClick={() => setPoseGalleryOpen((value) => !value)}
+            onClick={handlePoseGalleryToggle}
+            disabled={checkoutLoading}
           >
-            {poseGalleryOpen ? TEXT.poseGalleryToggleClose : TEXT.poseGalleryToggleOpen}
+            {canAccessPoseGallery
+              ? poseGalleryOpen
+                ? TEXT.poseGalleryToggleClose
+                : TEXT.poseGalleryToggleOpen
+              : user
+              ? TEXT.upgrade
+              : "\u30ed\u30b0\u30a4\u30f3"}
           </button>
         </div>
 
-        {poseGalleryOpen ? (
+        {canAccessPoseGallery && poseGalleryOpen ? (
           <>
             <span className="muted">{TEXT.poseGalleryAreasLabel}</span>
             <div className="pill-group">
               <button
-                type="button"
-                className={`pill ${areaFilter === "all" ? "active" : ""}`}
-                onClick={() => setAreaFilter("all")}
-              >
-                {TEXT.poseGalleryFilterAll}
-              </button>
-              {areaOptions.map((area) => (
-                <button
                   type="button"
-                  key={area}
-                  className={`pill ${areaFilter === area ? "active" : ""}`}
-                  onClick={() => setAreaFilter(area)}
+                  className={`pill ${areaFilter === "all" ? "active" : ""}`}
+                  onClick={() => setAreaFilter("all")}
                 >
-                  {area}
+                  {TEXT.poseGalleryFilterAll}
                 </button>
-              ))}
-            </div>
+                {areaOptions.map((area) => (
+                <button
+                    type="button"
+                    key={area}
+                    className={`pill ${areaFilter === area ? "active" : ""}`}
+                    onClick={() => setAreaFilter(area)}
+                  >
+                    {area}
+                  </button>
+                ))}
+              </div>
             {filteredPoses.length > 0 ? (
               <div
                 style={{
@@ -241,38 +254,38 @@ export default function Settings() {
                         background: "var(--card-soft)",
                       }}
                     >
-                      <div className="thumb" style={{ margin: 0 }}>
-                        {pose.imageUrl ? (
-                          <img src={pose.imageUrl} alt={poseName} loading="lazy" />
-                        ) : (
-                          <span className="muted">{poseName}</span>
-                        )}
-                      </div>
-                      <div style={{ fontWeight: 700 }}>{poseName}</div>
-                      <div className="muted">
-                        {TEXT.poseGalleryLevelLabel.replace("{level}", String(pose.level))}
-                      </div>
-                      {poseAreas.length > 0 ? (
-                        <div className="pill-group">
-                          {poseAreas.map((area) => (
-                            <span
-                              key={area}
-                              className="pill"
-                              style={{ cursor: "default" }}
-                            >
-                              {area}
-                            </span>
-                          ))}
+                        <div className="thumb" style={{ margin: 0 }}>
+                          {pose.imageUrl ? (
+                            <img src={pose.imageUrl} alt={poseName} loading="lazy" />
+                          ) : (
+                            <span className="muted">{poseName}</span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="muted">{TEXT.poseGalleryNoAreas}</span>
-                      )}
+                        <div style={{ fontWeight: 700 }}>{poseName}</div>
+                        <div className="muted">
+                          {TEXT.poseGalleryLevelLabel.replace("{level}", String(pose.level))}
+                        </div>
+                        {poseAreas.length > 0 ? (
+                          <div className="pill-group">
+                            {poseAreas.map((area) => (
+                              <span
+                                key={area}
+                                className="pill"
+                                style={{ cursor: "default" }}
+                              >
+                                {area}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="muted">{TEXT.poseGalleryNoAreas}</span>
+                        )}
                       <button
-                        type="button"
-                        className="btn primary"
-                        onClick={() => nav(`/pose/${pose.slug}`)}
-                      >
-                        {TEXT.poseGalleryOpen}
+                          type="button"
+                          className="btn primary"
+                          onClick={() => nav(`/pose/${pose.slug}`)}
+                        >
+                          {TEXT.poseGalleryOpen}
                       </button>
                     </div>
                   );
@@ -282,18 +295,16 @@ export default function Settings() {
               <div className="muted">{TEXT.poseGalleryEmpty}</div>
             )}
           </>
-        ) : (
-          <span className="muted">{TEXT.poseGalleryClosedHint}</span>
-        )}
+        ) : null}
       </div>
 
       <div className="card row">
         <div style={{ fontWeight: 700 }}>{TEXT.planTitle}</div>
-        <p className="muted">{planLine}</p>
+        <div style={{ fontSize: 24, fontWeight: 700 }}>{planLabel}</div>
         {checkoutError && <div style={{ color: "#d53f8c" }}>{checkoutError}</div>}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {!isPaid ? (
-            <button className="btn primary" onClick={handleUpgrade} disabled={checkoutLoading || !user}>
+          <button className="btn primary" onClick={handleUpgrade} disabled={checkoutLoading || !user}>
               {checkoutLoading ? TEXT.upgradeLoading : TEXT.upgrade}
             </button>
           ) : (
@@ -306,7 +317,6 @@ export default function Settings() {
 
       <div className="card row">
         <div style={{ fontWeight: 700 }}>{TEXT.profileTitle}</div>
-        {!user && <div className="muted">{TEXT.profileHint}</div>}
         <label className="field">
           <span>{TEXT.nameLabel}</span>
           <input
@@ -331,7 +341,7 @@ export default function Settings() {
           <span>{TEXT.levelLabel}</span>
           <div className="pill-group">
             {experienceOptions.map((opt) => (
-              <button
+            <button
                 key={opt}
                 className={`pill ${experience === opt ? "active" : ""}`}
                 onClick={() => setExperience(opt)}
@@ -344,7 +354,7 @@ export default function Settings() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="btn primary" onClick={handleSave} disabled={disabled || !name.trim()}>
+        <button className="btn primary" onClick={handleSave} disabled={disabled || !name.trim()}>
             {TEXT.save}
           </button>
           {saving && <span className="muted">{TEXT.saving}</span>}
@@ -355,7 +365,6 @@ export default function Settings() {
 
       <div className="card row">
         <div style={{ fontWeight: 700 }}>{TEXT.contactCardTitle}</div>
-        <p className="muted">{TEXT.contactCardDescription}</p>
         <Link className="btn primary" to="/contact">
           {TEXT.contactCardButton}
         </Link>
@@ -369,4 +378,13 @@ export default function Settings() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
 

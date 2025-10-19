@@ -95,46 +95,6 @@ const mcpSessions = new Map<string, McpSession>();
 
 const mcpTools = [
   {
-    name: "generate_menu",
-    description: "Generate and store a personalized yoga sequence for the user.",
-    input_schema: {
-      type: "object",
-      required: ["user_id", "menu"],
-      properties: {
-        user_id: {
-          type: "string",
-          description: "Supabase auth user id.",
-        },
-        menu: {
-          type: "object",
-          description: "Sequence blueprint following the same structure as /api/sdk/menus.",
-        },
-        focus_keywords: {
-          type: "array",
-          items: { type: "string" },
-        },
-        constraints: {
-          type: "object",
-          additionalProperties: true,
-          properties: {
-            focus: {
-              anyOf: [
-                { type: "string" },
-                { type: "array", items: { type: "string" } },
-              ],
-            },
-            energy: { type: "string" },
-            season_hint: { type: "string" },
-            time_segment: { type: "string" },
-          },
-        },
-        free_limit: { type: "integer" },
-        request: { type: "object" },
-      },
-      additionalProperties: true,
-    },
-  },
-  {
     name: "get_history",
     description: "Return monthly practice history for the user.",
     input_schema: {
@@ -921,15 +881,23 @@ async function handleMcpSse(env: Env, request: Request, url: URL) {
       mcpSessions.set(sessionId, session);
   const handshake = {
     session_id: sessionId,
-    protocol: "1.0",
+    protocol_version: "1.0",
     server: mcpServerInfo,
-    capabilities: {},
+    capabilities: {
+      tools: {},
+      resources: {},
+      prompts: {},
+      sampling: {},
+    },
+    session: {
+      id: sessionId,
+    },
     limits: {
       free_weekly_limit: freeLimit,
       billing_url: billingUrl,
     },
     tools: mcpTools,
-      };
+  };
       sendMcpEvent(session, "handshake", handshake);
       sendMcpEvent(session, "ready", { message: "session_ready" });
       session.heartbeat = setInterval(() => {
@@ -957,7 +925,6 @@ async function handleMcpSse(env: Env, request: Request, url: URL) {
 async function handleMcpInvoke(env: Env, request: Request, url: URL) {
   const auth = authenticateSdkRequest(env, request, url, MCP_CHANNEL);
   if (!auth.ok) return auth.response;
-  const billingUrl = getBillingUrl(env);
   const body = (await readJson(request)) || {};
   const sessionId = body.session_id || body.sessionId;
   if (!sessionId || typeof sessionId !== "string") {
@@ -979,102 +946,7 @@ async function handleMcpInvoke(env: Env, request: Request, url: URL) {
   const args = body.arguments ?? body.args ?? {};
   let result: Record<string, any>;
   try {
-    if (tool === "generate_menu") {
-      const userId =
-        typeof args.user_id === "string" && args.user_id.trim().length
-          ? args.user_id.trim()
-          : null;
-      if (!userId) {
-        const err: any = new Error("missing_user_id");
-        err.statusCode = 400;
-        err.payload = { error: "missing_user_id" };
-        throw err;
-      }
-      const menu = args.menu;
-      if (!menu || typeof menu !== "object") {
-        const err: any = new Error("missing_menu");
-        err.statusCode = 400;
-        err.payload = { error: "missing_menu" };
-        throw err;
-      }
-      const constraints =
-        args.constraints && typeof args.constraints === "object"
-          ? args.constraints
-          : {};
-      const focusSet = new Set<string>();
-      const collectFocus = (value: unknown) => {
-        if (!value) return;
-        if (Array.isArray(value)) {
-          value
-            .map((item) =>
-              typeof item === "string" ? item.trim() : "",
-            )
-            .filter(Boolean)
-            .forEach((entry) => focusSet.add(entry));
-        } else if (typeof value === "string" && value.trim().length) {
-          value
-            .split(/[\s,\u3001]+/)
-            .map((entry) => entry.trim())
-            .filter(Boolean)
-            .forEach((entry) => focusSet.add(entry));
-        }
-      };
-      collectFocus(args.focus_keywords);
-      collectFocus(args.focusKeywords);
-      collectFocus(constraints.focus);
-      if (Array.isArray(menu.tags)) collectFocus(menu.tags);
-      if (Array.isArray(menu.focus)) collectFocus(menu.focus);
-
-      const profileResult = await fetchProfileWithStats(env, userId);
-      const profileRecord = profileResult.profile || null;
-      const paid = isProfileSubscriptionActive(profileRecord);
-      const usage = await trackSdkUsageQuota(env, {
-        userId,
-        paid,
-        freeLimit:
-          typeof args.free_limit === "number" ? args.free_limit : undefined,
-      });
-      if (!usage.allowed) {
-        const limit = usage.usage.limit;
-        const message = limit
-          ? `Free plan allows up to ${limit} chats per week. Please consider upgrading to continue.`
-          : "Free plan usage limit reached. Please consider upgrading to continue.";
-        const err: any = new Error("payment_required");
-        err.statusCode = 402;
-        err.payload = {
-          error: "payment_required",
-          message,
-          usage: usage.usage,
-          billing_url: billingUrl || getBillingUrl(env),
-          paid,
-        };
-        throw err;
-      }
-
-      const autoBgmContext = {
-        focusKeywords: Array.from(focusSet),
-        energy: constraints.energy || args.energy,
-        seasonHint: constraints.season_hint || args.season_hint,
-        timeSegment: args.time_segment || constraints.time_segment,
-      };
-
-      const sequence = await normalizeAndStoreMenu(env, {
-        userId,
-        menu,
-        channel: MCP_CHANNEL,
-        requestMetadata: args.request ?? null,
-        autoBgmMode: "always",
-        autoBgmContext,
-      });
-
-      result = {
-        sequence,
-        usage: usage.usage,
-        paid,
-        profile: profileRecord,
-        stats: profileResult.stats,
-      };
-    } else if (tool === "get_history") {
+    if (tool === "get_history") {
       const userId =
         typeof args.user_id === "string" && args.user_id.trim().length
           ? args.user_id.trim()
